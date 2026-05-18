@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS password_resets (
+    id BIGSERIAL PRIMARY KEY,
+    id_usuario BIGINT REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    expiracion TIMESTAMP NOT NULL,
+    usado BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
