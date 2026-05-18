@@ -1,7 +1,18 @@
 const { Pool } = require('pg');
 const config = require('./index');
 
-const pool = new Pool(config.db);
+const poolConfig = {
+  ...config.db
+};
+
+// Cloud databases like Aiven require SSL connection
+if (process.env.NODE_ENV === 'production' || (config.db.host && config.db.host !== 'localhost' && config.db.host !== '127.0.0.1')) {
+  poolConfig.ssl = {
+    rejectUnauthorized: false
+  };
+}
+
+const pool = new Pool(poolConfig);
 
 pool.on('connect', () => {
   console.log('PostgreSQL database connected successfully');
