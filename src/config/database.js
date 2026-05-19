@@ -1,12 +1,24 @@
 const { Pool } = require('pg');
 const config = require('./index');
 
-const poolConfig = {
-  ...config.db
-};
+let poolConfig;
 
-// Cloud databases like Aiven require SSL connection
-if (process.env.NODE_ENV === 'production' || (config.db.host && config.db.host !== 'localhost' && config.db.host !== '127.0.0.1')) {
+if (process.env.DATABASE_URL) {
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL
+  };
+} else {
+  poolConfig = {
+    ...config.db
+  };
+}
+
+// Cloud databases like Aiven/Render require SSL connection
+if (
+  process.env.NODE_ENV === 'production' || 
+  process.env.DATABASE_URL || 
+  (config.db.host && config.db.host !== 'localhost' && config.db.host !== '127.0.0.1')
+) {
   poolConfig.ssl = {
     rejectUnauthorized: false
   };
