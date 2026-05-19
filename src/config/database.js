@@ -28,6 +28,7 @@ if (process.env.DATABASE_URL) {
   }
 }
 
+// Única instancia de Pool declarada correctamente
 const pool = new Pool(poolConfig);
 
 pool.on('connect', () => {
@@ -36,7 +37,10 @@ pool.on('connect', () => {
 
 pool.on('error', (err) => {
   console.error('Unexpected error on idle client', err);
-  process.exit(-1);
+  // IMPORTANTE: No llamamos a process.exit(-1) aquí.
+  // Las bases de datos en la nube (como Aiven/Render) cierran conexiones inactivas frecuentemente por inactividad.
+  // Si matamos el proceso, Render entrará en un bucle infinito de reinicios (crash loop).
+  // pg reconectará automáticamente cuando se realicen nuevas consultas.
 });
 
 module.exports = {
