@@ -31,9 +31,44 @@ app.use(morgan(morganFormat));
 
 app.use(helmet());
 app.use(cookieParser());
+// Configuración robusta de orígenes permitidos para CORS
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000'
+];
+
+if (process.env.FRONTEND_URL) {
+  // Limpiamos barra inclinada al final por si el usuario la agregó en la configuración de Render
+  const cleanOrigin = process.env.FRONTEND_URL.replace(/\/$/, "");
+  allowedOrigins.push(cleanOrigin);
+}
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Permitir peticiones sin origen (como Postman, curl, o tareas internas)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      // Advertencia en la consola de Render para ayudar al desarrollador a saber qué dominio falta agregar
+      console.warn(`[CORS Bloqueado] La petición desde el origen "${origin}" no está permitida por CORS.`);
+      return callback(new Error('No permitido por la política CORS del servidor'));
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept', 
+    'Origin', 
+    'Access-Control-Allow-Headers'
+  ],
+  optionsSuccessStatus: 204 // Código de estado exitoso para preflight OPTIONS
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
