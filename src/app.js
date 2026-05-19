@@ -42,7 +42,9 @@ const allowedOrigins = [
 if (process.env.FRONTEND_URL) {
   // Limpiamos barra inclinada al final por si el usuario la agregó en la configuración de Render
   const cleanOrigin = process.env.FRONTEND_URL.replace(/\/$/, "");
-  allowedOrigins.push(cleanOrigin);
+  if (!allowedOrigins.includes(cleanOrigin)) {
+    allowedOrigins.push(cleanOrigin);
+  }
 }
 
 app.use(cors({
@@ -50,13 +52,25 @@ app.use(cors({
     // Permitir peticiones sin origen (como Postman, curl, o tareas internas)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.includes(origin)) {
+    const cleanOrigin = origin.replace(/\/$/, "");
+    
+    // Permitir si está en la lista explícita
+    if (allowedOrigins.includes(cleanOrigin)) {
       return callback(null, true);
-    } else {
-      // Advertencia en la consola de Render para ayudar al desarrollador a saber qué dominio falta agregar
-      console.warn(`[CORS Bloqueado] La petición desde el origen "${origin}" no está permitida por CORS.`);
-      return callback(new Error('No permitido por la política CORS del servidor'));
     }
+    
+    // Permitir dinámicamente cualquier subdominio o dominio de Vercel (*.vercel.app)
+    // Esto es sumamente útil para despliegues de producción y vistas previas en Vercel
+    if (cleanOrigin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // Advertencia en la consola de Render para ayudar al desarrollador
+    console.warn(`[CORS Bloqueado] La petición desde el origen "${origin}" no está permitida por CORS.`);
+    
+    // IMPORTANTE: Retornar callback(null, false) en lugar de callback(new Error(...))
+    // Esto evita que Express lance un error 500 interno y permite que el navegador bloquee la petición limpiamente
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
