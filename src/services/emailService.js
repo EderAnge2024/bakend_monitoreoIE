@@ -9,20 +9,28 @@ let transporter = null;
 const initializeTransporter = () => {
   if (transporter) return transporter;
 
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_PASS;
+  // Trim possible whitespace that may appear in env variables
+  const rawUser = process.env.GMAIL_USER || '';
+  const rawPass = process.env.GMAIL_PASS || '';
+  const user = rawUser.trim();
+  const pass = rawPass.trim();
 
   if (user && pass) {
+    // Use explicit SMTP configuration to avoid issues with the shortcut "service: 'gmail'" in production environments
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // TLS – use STARTTLS
       auth: {
-        user: user,
-        pass: pass,
+        user,
+        pass,
       },
+      // Force TLS for Gmail
+      requireTLS: true,
     });
-    console.log('Servicio de Email inicializado correctamente.');
+    console.log('Servicio de Email inicializado correctamente con SMTP config.');
   } else {
-    console.log('Credenciales de Gmail no encontradas. Las funciones de correo están en modo simulado.');
+    console.log('Credenciales de Gmail no encontradas o vacías. Las funciones de correo están en modo simulado.');
   }
 
   return transporter;
@@ -30,7 +38,7 @@ const initializeTransporter = () => {
 
 const sendEmail = async (to, subject, text, html) => {
   const mailer = initializeTransporter();
-  
+
   if (!mailer) {
     console.log(`[Email Simulado] Enviando correo a: ${to}`);
     console.log(`Asunto: ${subject}`);
@@ -40,12 +48,13 @@ const sendEmail = async (to, subject, text, html) => {
 
   try {
     const info = await mailer.sendMail({
-      from: `"Sistema de Monitoreo IE" <${process.env.GMAIL_USER}>`,
+      from: `"Sistema de Monitoreo IE" <${process.env.GMAIL_USER.trim()}>`,
       to,
       subject,
       text,
-      html
+      html,
     });
+    console.log('Correo enviado, messageId:', info.messageId);
     return info;
   } catch (error) {
     console.error('Error enviando correo:', error);
