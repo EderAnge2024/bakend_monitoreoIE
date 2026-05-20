@@ -11,25 +11,23 @@ const initializeTransporter = () => {
 
   // Trim possible whitespace that may appear in env variables
   const rawUser = process.env.GMAIL_USER || '';
-  const rawPass = process.env.GMAIL_PASS || '';
+  const rawPass = process.env.GOOGLE_APP_PASSWORD || '';
   const user = rawUser.trim();
   const pass = rawPass.trim();
 
   if (user && pass) {
-    // Use explicit SMTP configuration to avoid issues with the shortcut "service: 'gmail'" in production environments
+    // Use SSL (port 465) for Gmail SMTP
     transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 587,
-      secure: false, // TLS – use STARTTLS
-      auth: {
-        user,
-        pass,
-      },
-      // Force TLS for Gmail and IPv4 only
-      requireTLS: true,
-      family: 4,
+      port: 465,
+      secure: true, // use SSL/TLS from the start
+      auth: { user, pass },
+      family: 4, // force IPv4
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
-    console.log('Servicio de Email inicializado correctamente con SMTP config.');
+    console.log('Servicio de Email inicializado con configuración SSL (puerto 465).');
   } else {
     console.log('Credenciales de Gmail no encontradas o vacías. Las funciones de correo están en modo simulado.');
   }
