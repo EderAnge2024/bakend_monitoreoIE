@@ -25,8 +25,9 @@ const initializeTransporter = () => {
         user,
         pass,
       },
-      // Force TLS for Gmail
+      // Force TLS for Gmail and IPv4 only
       requireTLS: true,
+      family: 4,
     });
     console.log('Servicio de Email inicializado correctamente con SMTP config.');
   } else {
