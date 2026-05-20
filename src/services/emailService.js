@@ -1,5 +1,5 @@
 const nodemailer = require('nodemailer');
-
+const getEmailUser = () => (process.env.GMAIL_USER || '').trim();
 /**
  * Servicio preparado para la futura integración con Gmail Institucional.
  */
@@ -10,10 +10,8 @@ const initializeTransporter = () => {
   if (transporter) return transporter;
 
   // Trim possible whitespace that may appear in env variables
-  const rawUser = process.env.GMAIL_USER || '';
-  const rawPass = process.env.GOOGLE_APP_PASSWORD || '';
-  const user = rawUser.trim();
-  const pass = rawPass.trim();
+  const user = (process.env.GMAIL_USER || '').trim();
+  const pass = (process.env.GOOGLE_APP_PASSWORD || '').trim();
 
   if (user && pass) {
     // Use SSL (port 465) for Gmail SMTP
@@ -22,7 +20,7 @@ const initializeTransporter = () => {
       port: 465,
       secure: true, // use SSL/TLS from the start
       auth: { user, pass },
-      family: 4, // force IPv4
+      //family: 4, // force IPv4
       connectionTimeout: 10000,
       greetingTimeout: 10000,
       socketTimeout: 15000,
@@ -47,7 +45,7 @@ const sendEmail = async (to, subject, text, html) => {
 
   try {
     const info = await mailer.sendMail({
-      from: `"Sistema de Monitoreo IE" <${process.env.GMAIL_USER.trim()}>`,
+      from: `"Sistema de Monitoreo IE" <${getEmailUser()}>`,
       to,
       subject,
       text,
