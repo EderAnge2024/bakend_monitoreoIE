@@ -24,6 +24,7 @@ const documentoRoutes = require('./modules/documentos/documento.routes');
 
 
 const app = express();
+app.set('trust proxy', 1); // Enable trust proxy for X-Forwarded-For (Render/Vercel)
 
 // Middlewares - Morgan primero para registrar absolutamente todas las peticiones
 const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
