@@ -110,9 +110,13 @@ const register = async (req, res, next) => {
 };
 
 const forgotPassword = async (req, res, next) => {
-  const { correo } = req.body;
+  // Accept both 'correo' and 'email' fields for compatibility
+  const email = (req.body.correo || req.body.email || '').trim();
+  if (!email) {
+    return res.status(400).json({ message: 'Se requiere el correo del usuario' });
+  }
   try {
-    const result = await db.query('SELECT * FROM usuarios WHERE correo = $1', [correo]);
+    const result = await db.query('SELECT * FROM usuarios WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado con ese correo' });
     }
@@ -127,8 +131,9 @@ const forgotPassword = async (req, res, next) => {
     );
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
-    
-    await emailService.enviarRecuperacionPassword(correo, resetLink).catch(e => console.error('Error enviando email', e));
+
+    // Use the resolved email address when sending the recovery email
+    await emailService.enviarRecuperacionPassword(email, resetLink).catch(e => console.error('Error enviando email', e));
 
     res.json({ message: 'Enlace de recuperación enviado al correo (revisa la consola si estás en modo simulado)' });
   } catch (error) {

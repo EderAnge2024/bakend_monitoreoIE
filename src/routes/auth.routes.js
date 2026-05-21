@@ -18,7 +18,21 @@ const registerValidation = [
   body('dni').isLength({ min: 8, max: 8 }),
 ];
 
+// Validation for forgot password (email field)
+const forgotPasswordValidation = [
+  body('correo').optional().isEmail().withMessage('Correo must be a valid email'),
+  body('email').optional().isEmail().withMessage('Email must be a valid email'),
+];
+
+// Validation for reset password (token and newPassword)
+const resetPasswordValidation = [
+  body('token').notEmpty().withMessage('Token is required'),
+  body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
+];
+
 router.post('/login', loginValidation, validate, authController.login);
 router.post('/register', registerValidation, validate, authController.register);
+router.post('/forgot-password', forgotPasswordValidation, validate, authController.forgotPassword);
+router.post('/reset-password', resetPasswordValidation, validate, authController.resetPassword);
 
 module.exports = router;
