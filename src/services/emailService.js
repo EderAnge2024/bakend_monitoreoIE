@@ -17,8 +17,8 @@ const getSenderEmail = () => {
  * @param {string} html HTML version.
  */
 const send = async (to, subject, text, html) => {
-  // Use Brevo service; it will simulate if API key missing.
-  return sendEmail(to, subject, text, html);
+  // Use brevo service with proper object payload
+  return sendEmail({ to, subject, text, html });
 };
 
 /**
