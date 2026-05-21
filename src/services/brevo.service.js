@@ -15,7 +15,7 @@ let fetchFn;
   }
 })();
 
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+const BREVO_API_URL = process.env.BREVO_API_URL?.trim() || 'https://api.brevo.com/v3/smtp/email';
 const BREVO_API_KEY = process.env.BREVO_API_KEY?.trim();
 
 const DEFAULT_SENDER = {
@@ -109,58 +109,4 @@ async function simpleSend(to, subject, text, html) {
 }
 
 module.exports = { sendEmail, simpleSend };
-// Simple wrapper around Brevo (Sendinblue) Transactional Email API
-// Requires BREVO_API_KEY in environment variables.
-// Uses native fetch (Node >=18) to POST email payload.
 
-const BREVO_API_URL = process.env.BREVO_API_URL?.trim() || 'https://api.brevo.com/v3/smtp/email';
-
-/**
- * Send an email via Brevo Transactional Email API.
- * @param {string} to - Recipient email address.
- * @param {string} subject - Email subject.
- * @param {string} text - Plain text content.
- * @param {string} html - HTML content.
- * @returns {Promise<Object>} Response data from Brevo.
- */
-async function sendEmail(to, subject, text, html) {
-  const apiKey = process.env.BREVO_API_KEY?.trim();
-  if (!apiKey) {
-    console.warn('[Brevo] BREVO_API_KEY not set – email not sent (simulation).');
-    console.log(`[Email Simulado] To: ${to} | Subject: ${subject}`);
-    return { simulated: true };
-  }
-
-  const payload = {
-    sender: {
-      name: 'Sistema de Monitoreo IE',
-      email: process.env.BREVO_SENDER_EMAIL || 'no-reply@monitoreo.ie',
-    },
-    to: [{ email: to }],
-    subject,
-    textContent: text,
-    htmlContent: html,
-  };
-
-  const response = await fetch(BREVO_API_URL, {
-    method: 'POST',
-    headers: {
-      'api-key': apiKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error('[Brevo] Email send failed', response.status, errorBody);
-    throw new Error(`Brevo email error ${response.status}`);
-  }
-
-  const data = await response.json();
-  console.log('[Brevo] Email sent, messageId:', data.messageId);
-  return data;
-}
-
-module.exports = { sendEmail };
