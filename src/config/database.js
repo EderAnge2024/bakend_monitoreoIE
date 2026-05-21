@@ -33,24 +33,27 @@ const pool = new Pool(poolConfig);
 
 pool.on('connect', async () => {
   console.log('PostgreSQL database connected successfully');
-/*
-  // --- Ensure password_resets table exists (idempotent) ---
-  const createPasswordResets = `
+  // Ensure password_resets table exists with required columns (idempotent)
+  const createTableQuery = `
     CREATE TABLE IF NOT EXISTS password_resets (
-      id SERIAL PRIMARY KEY,
-      id_usuario INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-      id_docente INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
-      token VARCHAR(64) NOT NULL,
+      id BIGSERIAL PRIMARY KEY,
+      id_usuario BIGINT REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+      token TEXT NOT NULL,
       expiracion TIMESTAMP NOT NULL,
-      usado BOOLEAN DEFAULT FALSE
+      usado BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
   try {
     await pool.query(createTableQuery);
     console.log('Ensured password_resets table exists');
+    // Ensure id_docente column exists (add if missing)
+    const addDocenteColumn = `ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS id_docente BIGINT REFERENCES docentes(id) ON DELETE CASCADE;`;
+    await pool.query(addDocenteColumn);
+    console.log('Ensured id_docente column exists');
   } catch (e) {
-    console.error('Error ensuring password_resets table:', e);
-  }*/
+    console.error('Error ensuring password_resets table/column:', e);
+  }
 });
 
 pool.on('error', (err) => {
