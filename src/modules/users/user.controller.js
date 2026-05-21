@@ -11,6 +11,7 @@ const getAll = async (req, res, next) => {
       LEFT JOIN instituciones i ON u.id_institucion = i.id_institucion
       LEFT JOIN usuario_roles ur ON u.id_usuario = ur.id_usuario
       LEFT JOIN roles r ON ur.id_rol = r.id_rol
+      WHERE r.nombre <> 'docente'
       ORDER BY u.id_usuario DESC
     `);
     res.json(result.rows);

@@ -110,13 +110,14 @@ const register = async (req, res, next) => {
 };
 
 const forgotPassword = async (req, res, next) => {
-  // Accept both 'correo' and 'email' fields for compatibility
+  // Accept both 'correo' and 'email' fields for compatibility (only 'correo' exists in DB)
   const email = (req.body.correo || req.body.email || '').trim();
   if (!email) {
     return res.status(400).json({ message: 'Se requiere el correo del usuario' });
   }
   try {
-    const result = await db.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+    // 1️⃣ Buscar en usuarios
+    const result = await db.query('SELECT * FROM usuarios WHERE correo = $1', [email]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado con ese correo' });
     }
@@ -125,16 +126,14 @@ const forgotPassword = async (req, res, next) => {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenExpires = new Date(Date.now() + 30 * 60000); // 30 minutos
 
+    // Insert token for usuario only
     await db.query(
-      'INSERT INTO password_resets (id_usuario, token, expiracion) VALUES ($1, $2, $3)',
+      `INSERT INTO password_resets (id_usuario, id_docente, token, expiracion) VALUES ($1, NULL, $2, $3)`,
       [user.id_usuario, resetToken, resetTokenExpires]
     );
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
-
-    // Use the resolved email address when sending the recovery email
     await emailService.enviarRecuperacionPassword(email, resetLink).catch(e => console.error('Error enviando email', e));
-
     res.json({ message: 'Enlace de recuperación enviado al correo (revisa la consola si estás en modo simulado)' });
   } catch (error) {
     next(error);
@@ -145,31 +144,25 @@ const resetPassword = async (req, res, next) => {
   const { token, newPassword } = req.body;
   try {
     const result = await db.query(
-      'SELECT * FROM password_resets WHERE token = $1 AND usado = FALSE AND expiracion > CURRENT_TIMESTAMP',
+      `SELECT * FROM password_resets WHERE token = $1 AND usado = FALSE AND expiracion > CURRENT_TIMESTAMP`,
       [token]
     );
-
     if (result.rows.length === 0) {
       return res.status(400).json({ message: 'Token inválido, expirado o ya utilizado' });
     }
-
     const resetRecord = result.rows[0];
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      
-      await client.query(
-        'UPDATE usuarios SET password = $1 WHERE id_usuario = $2',
-        [hashedPassword, resetRecord.id_usuario]
-      );
-
-      await client.query(
-        'UPDATE password_resets SET usado = TRUE WHERE id = $1',
-        [resetRecord.id]
-      );
-
+      if (resetRecord.id_usuario) {
+        // actualizar usuarios
+        await client.query('UPDATE usuarios SET password = $1 WHERE id_usuario = $2', [hashedPassword, resetRecord.id_usuario]);
+      } else if (resetRecord.id_docente) {
+        // actualizar docentes (se agregó columna password en la tabla docentes)
+        await client.query('UPDATE docentes SET password = $1 WHERE id = $2', [hashedPassword, resetRecord.id_docente]);
+      }
+      await client.query('UPDATE password_resets SET usado = TRUE WHERE id = $1', [resetRecord.id]);
       await client.query('COMMIT');
       res.json({ message: 'Contraseña actualizada correctamente' });
     } catch (e) {

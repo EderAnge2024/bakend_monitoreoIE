@@ -145,7 +145,15 @@ CREATE TABLE respuestas (
     valor_obtenido DECIMAL(5,2) DEFAULT 0
 );
 
--- Table: evidencias
+
+-- Table: password_resets
+CREATE TABLE password_resets (
+    id SERIAL PRIMARY KEY,
+    id_usuario INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+    token VARCHAR(64) NOT NULL,
+    expiracion TIMESTAMP NOT NULL,
+    usado BOOLEAN DEFAULT FALSE
+);
 CREATE TABLE evidencias (
     id SERIAL PRIMARY KEY,
     monitoreo_id INTEGER REFERENCES monitoreos(id) ON DELETE CASCADE,

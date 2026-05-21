@@ -31,8 +31,26 @@ if (process.env.DATABASE_URL) {
 // Única instancia de Pool declarada correctamente
 const pool = new Pool(poolConfig);
 
-pool.on('connect', () => {
+pool.on('connect', async () => {
   console.log('PostgreSQL database connected successfully');
+/*
+  // --- Ensure password_resets table exists (idempotent) ---
+  const createPasswordResets = `
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id SERIAL PRIMARY KEY,
+      id_usuario INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+      id_docente INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
+      token VARCHAR(64) NOT NULL,
+      expiracion TIMESTAMP NOT NULL,
+      usado BOOLEAN DEFAULT FALSE
+    );
+  `;
+  try {
+    await pool.query(createTableQuery);
+    console.log('Ensured password_resets table exists');
+  } catch (e) {
+    console.error('Error ensuring password_resets table:', e);
+  }*/
 });
 
 pool.on('error', (err) => {
