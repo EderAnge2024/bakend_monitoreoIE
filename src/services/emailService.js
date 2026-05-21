@@ -1,88 +1,57 @@
-const nodemailer = require('nodemailer');
-const getEmailUser = () => (process.env.GMAIL_USER || '').trim();
+// emailService.js
+// Email sending service using Brevo Transactional Email API.
+// This replaces the previous Nodemailer + Gmail/SMTP implementation.
+
+const { sendEmail } = require('./brevo.service');
+
+// Helper to construct sender email (fallback to env or placeholder)
+const getSenderEmail = () => {
+  return process.env.BREVO_SENDER_EMAIL || 'no-reply@monitoreo.ie';
+};
+
 /**
- * Servicio preparado para la futura integración con Gmail Institucional.
+ * Generic email sender wrapper.
+ * @param {string} to Recipient email address.
+ * @param {string} subject Email subject.
+ * @param {string} text Plain‑text version.
+ * @param {string} html HTML version.
  */
-
-let transporter = null;
-
-const initializeTransporter = () => {
-  if (transporter) return transporter;
-
-  // Trim possible whitespace that may appear in env variables
-  const user = (process.env.GMAIL_USER || '').trim();
-  const pass = (process.env.GOOGLE_APP_PASSWORD || '').trim();
-
-  if (user && pass) {
-    // Use SSL (port 465) for Gmail SMTP
-    transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true, // use SSL/TLS from the start
-      auth: { user, pass },
-      //family: 4, // force IPv4
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
-    console.log('Servicio de Email inicializado con configuración SSL (puerto 465).');
-  } else {
-    console.log('Credenciales de Gmail no encontradas o vacías. Las funciones de correo están en modo simulado.');
-  }
-
-  return transporter;
+const send = async (to, subject, text, html) => {
+  // Use Brevo service; it will simulate if API key missing.
+  return sendEmail(to, subject, text, html);
 };
 
-const sendEmail = async (to, subject, text, html) => {
-  const mailer = initializeTransporter();
-
-  if (!mailer) {
-    console.log(`[Email Simulado] Enviando correo a: ${to}`);
-    console.log(`Asunto: ${subject}`);
-    console.log(`Contenido: ${text}`);
-    return true;
-  }
-
-  try {
-    const info = await mailer.sendMail({
-      from: `"Sistema de Monitoreo IE" <${getEmailUser()}>`,
-      to,
-      subject,
-      text,
-      html,
-    });
-    console.log('Correo enviado, messageId:', info.messageId);
-    return info;
-  } catch (error) {
-    console.error('Error enviando correo:', error);
-    throw error;
-  }
-};
-
+/**
+ * Send password recovery email with a reset link.
+ */
 const enviarRecuperacionPassword = async (email, resetLink) => {
   const subject = 'Recuperación de Contraseña - Monitoreo IE';
-  const text = `Hola, has solicitado recuperar tu contraseña. Por favor, visita el siguiente enlace para crear una nueva: ${resetLink}`;
+  const text = `Hola, has solicitado recuperar tu contraseña. Visita el siguiente enlace para crear una nueva: ${resetLink}`;
   const html = `
     <div style="font-family: Arial, sans-serif; padding: 20px;">
       <h2 style="color: #2563eb;">Recuperación de Contraseña</h2>
       <p>Hola, has solicitado recuperar tu contraseña en el Sistema de Monitoreo IE.</p>
-      <p>Haz clic en el siguiente botón para crear una nueva contraseña:</p>
-      <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold;">Restablecer Contraseña</a>
-      <p style="margin-top: 20px; font-size: 12px; color: #64748b;">Si no solicitaste esto, puedes ignorar este correo.</p>
+      <p>Haz clic en el botón siguiente para crear una nueva contraseña:</p>
+      <a href="${resetLink}" style="display:inline-block; padding:10px 20px; background-color:#2563eb; color:#fff; text-decoration:none; border-radius:5px; font-weight:bold;">Restablecer Contraseña</a>
+      <p style="margin-top:20px; font-size:12px; color:#64748b;">Si no solicitaste esto, puedes ignorar este correo.</p>
     </div>
   `;
-  
-  return sendEmail(email, subject, text, html);
+  return send(email, subject, text, html);
 };
 
+/**
+ * Notification for a new request (used elsewhere in the app).
+ */
 const enviarNotificacionSolicitud = async (emailAdmin, asunto, docenteNombre) => {
   const subject = 'Nueva Solicitud Registrada';
   const text = `El docente ${docenteNombre} ha registrado una nueva solicitud: ${asunto}. Revísela en el sistema.`;
   const html = `<p>El docente <strong>${docenteNombre}</strong> ha registrado una nueva solicitud: <strong>${asunto}</strong>. Por favor, ingrese al sistema para evaluarla.</p>`;
-  
-  return sendEmail(emailAdmin, subject, text, html);
+  return send(emailAdmin, subject, text, html);
 };
 
+/**
+ * Notify teacher about the status of their request.
+ */
 const enviarEstadoSolicitud = async (emailDocente, asunto, estado, observacion) => {
   const subject = `Actualización de Solicitud: ${estado}`;
   const text = `Tu solicitud "${asunto}" ha sido marcada como: ${estado}. Observación: ${observacion || 'Ninguna'}`;
@@ -95,13 +64,12 @@ const enviarEstadoSolicitud = async (emailDocente, asunto, estado, observacion) 
       <p>Ingresa al sistema para más detalles.</p>
     </div>
   `;
-  
-  return sendEmail(emailDocente, subject, text, html);
+  return send(emailDocente, subject, text, html);
 };
 
 module.exports = {
-  sendEmail,
+  send,
   enviarRecuperacionPassword,
   enviarNotificacionSolicitud,
-  enviarEstadoSolicitud
+  enviarEstadoSolicitud,
 };
