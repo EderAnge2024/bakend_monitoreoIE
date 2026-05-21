@@ -117,20 +117,39 @@ const forgotPassword = async (req, res, next) => {
   }
   try {
     // 1️⃣ Buscar en usuarios
-    const result = await db.query('SELECT * FROM usuarios WHERE correo = $1', [email]);
-    if (result.rows.length === 0) {
+    let result = await db.query('SELECT * FROM usuarios WHERE correo = $1', [email]);
+    let user = null;
+    let isDocente = false;
+    if (result.rows.length > 0) {
+      user = result.rows[0];
+    } else {
+      // 2️⃣ Buscar en docentes
+      const docenteResult = await db.query('SELECT * FROM docentes WHERE correo = $1', [email]);
+      if (docenteResult.rows.length > 0) {
+        user = docenteResult.rows[0];
+        isDocente = true;
+      }
+    }
+
+    if (!user) {
       return res.status(404).json({ message: 'Usuario no encontrado con ese correo' });
     }
-    const user = result.rows[0];
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenExpires = new Date(Date.now() + 30 * 60000); // 30 minutos
 
-    // Insert token for usuario only
-    await db.query(
-      `INSERT INTO password_resets (id_usuario, id_docente, token, expiracion) VALUES ($1, NULL, $2, $3)`,
-      [user.id_usuario, resetToken, resetTokenExpires]
-    );
+    // Insert token for usuario or docente
+    if (isDocente) {
+      await db.query(
+        `INSERT INTO password_resets (id_usuario, id_docente, token, expiracion) VALUES (NULL, $1, $2, $3)`,
+        [user.id, resetToken, resetTokenExpires]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO password_resets (id_usuario, id_docente, token, expiracion) VALUES ($1, NULL, $2, $3)`,
+        [user.id_usuario, resetToken, resetTokenExpires]
+      );
+    }
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
     await emailService.enviarRecuperacionPassword(email, resetLink).catch(e => console.error('Error enviando email', e));
@@ -160,7 +179,7 @@ const resetPassword = async (req, res, next) => {
         await client.query('UPDATE usuarios SET password = $1 WHERE id_usuario = $2', [hashedPassword, resetRecord.id_usuario]);
       } else if (resetRecord.id_docente) {
         // actualizar docentes (se agregó columna password en la tabla docentes)
-        await client.query('UPDATE docentes SET password = $1 WHERE id = $2', [hashedPassword, resetRecord.id_docente]);
+        await client.query('UPDATE docentes SET password = $1 WHERE id_docente = $2', [hashedPassword, resetRecord.id_docente]);
       }
       await client.query('UPDATE password_resets SET usado = TRUE WHERE id = $1', [resetRecord.id]);
       await client.query('COMMIT');
