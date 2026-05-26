@@ -12,4 +12,7 @@ router.get('/docente/:id_docente', authenticateJWT, monitoreoController.getMonit
 router.get('/evaluados/:id_periodo', authenticateJWT, monitoreoController.getEvaluadosByPeriodo);
 router.get('/:id_monitoreo', authenticateJWT, monitoreoController.getMonitoreoDetalle);
 
+// Eliminar monitoreo: Solo accesible para administradores
+router.delete('/:id_monitoreo', authenticateJWT, authorizeRoles('administrador'), monitoreoController.deleteMonitoreo);
+
 module.exports = router;

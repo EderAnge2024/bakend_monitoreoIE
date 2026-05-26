@@ -532,6 +532,27 @@ const getAllMonitoreos = async (req, res, next) => {
   }
 };
 
+const deleteMonitoreo = async (req, res, next) => {
+  const { id_monitoreo } = req.params;
+  
+  // Extra security check just in case the middleware is bypassed or we want a controller-level check
+  if (req.user.role !== 'administrador') {
+    return res.status(403).json({ message: 'Prohibido: Solo los administradores pueden eliminar monitoreos.' });
+  }
+
+  try {
+    const result = await db.query('DELETE FROM monitoreos WHERE id_monitoreo = $1 RETURNING *', [id_monitoreo]);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Monitoreo no encontrado' });
+    }
+    
+    res.json({ message: 'Monitoreo eliminado correctamente', deleted: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createMonitoreo,
   getMonitoreosByEvaluador,
@@ -540,6 +561,7 @@ module.exports = {
   saveAnswers,
   getStats,
   getEvaluadosByPeriodo,
-  getMonitoreoDetalle
+  getMonitoreoDetalle,
+  deleteMonitoreo
 };
 
