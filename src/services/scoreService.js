@@ -17,23 +17,19 @@ const calculateTotalScore = async (id_monitoreo) => {
     const countPreguntas = parseInt(result.rows[0].count_preguntas || 1, 10);
     const totalScore = parseFloat((sumTotal / (countPreguntas > 0 ? countPreguntas : 1)).toFixed(2));
 
-    // 2. Determine performance level based on score
+    // 2. Determinar nivel de desempeño:
+    //    Busca el nivel cuyo puntaje_minimo sea <= al puntaje obtenido,
+    //    ordenado de mayor a menor → el nivel más alto alcanzado.
+    //    Esto evita huecos entre rangos sin importar los decimales.
     let levelRes = await db.query(`
       SELECT nombre 
       FROM niveles_desempeno 
-      WHERE $1 >= puntaje_minimo AND $1 <= puntaje_maximo
+      WHERE puntaje_minimo <= $1
+      ORDER BY puntaje_minimo DESC
       LIMIT 1
     `, [totalScore]);
 
     let nivelFinal = levelRes.rows[0]?.nombre || 'Sin Nivel';
-
-    // Fallback: If score exceeds max level, assign the highest one
-    if (!levelRes.rows.length) {
-      const maxLevelRes = await db.query('SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1');
-      if (maxLevelRes.rows.length && totalScore > 0) {
-        nivelFinal = maxLevelRes.rows[0].nombre;
-      }
-    }
 
     // 3. Update monitoring record
     await db.query(`

@@ -33,11 +33,16 @@ const getMonitoreosByEvaluador = async (req, res, next) => {
   const id_evaluador = req.user.id;
   try {
     const result = await db.query(`
-      SELECT m.*, d.nombres as docente_nombres, d.apellidos as docente_apellidos, f.nombre as ficha_nombre, nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final
+      SELECT m.*, d.nombres as docente_nombres, d.apellidos as docente_apellidos, f.nombre as ficha_nombre,
+             nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final
       FROM monitoreos m
       JOIN docentes d ON m.id_docente = d.id_docente
       JOIN fichas f ON m.id_ficha = f.id_ficha
-      LEFT JOIN niveles_desempeno nd ON m.puntaje_total BETWEEN nd.puntaje_minimo AND nd.puntaje_maximo
+      LEFT JOIN LATERAL (
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE puntaje_minimo <= m.puntaje_total
+        ORDER BY puntaje_minimo DESC LIMIT 1
+      ) nd ON true
       WHERE m.id_evaluador = $1
       ORDER BY m.fecha DESC
     `, [id_evaluador]);
@@ -51,11 +56,16 @@ const getMonitoreosByDocente = async (req, res, next) => {
   const { id_docente } = req.params;
   try {
     const result = await db.query(`
-      SELECT m.*, u.nombres as evaluador_nombres, u.apellidos as evaluador_apellidos, f.nombre as ficha_nombre, nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final
+      SELECT m.*, u.nombres as evaluador_nombres, u.apellidos as evaluador_apellidos, f.nombre as ficha_nombre,
+             nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final
       FROM monitoreos m
       JOIN usuarios u ON m.id_evaluador = u.id_usuario
       JOIN fichas f ON m.id_ficha = f.id_ficha
-      LEFT JOIN niveles_desempeno nd ON m.puntaje_total BETWEEN nd.puntaje_minimo AND nd.puntaje_maximo
+      LEFT JOIN LATERAL (
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE puntaje_minimo <= m.puntaje_total
+        ORDER BY puntaje_minimo DESC LIMIT 1
+      ) nd ON true
       WHERE m.id_docente = $1
       ORDER BY m.fecha DESC
     `, [id_docente]);
@@ -418,12 +428,18 @@ const getMonitoreoDetalle = async (req, res, next) => {
   try {
     // 1. Get header
     const headerRes = await db.query(`
-      SELECT m.*, nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final, d.nombres as docente_nombres, d.apellidos as docente_apellidos, f.nombre as ficha_nombre, u.nombres as evaluador_nombres, u.apellidos as evaluador_apellidos
+      SELECT m.*, nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final,
+             d.nombres as docente_nombres, d.apellidos as docente_apellidos,
+             f.nombre as ficha_nombre, u.nombres as evaluador_nombres, u.apellidos as evaluador_apellidos
       FROM monitoreos m
       JOIN docentes d ON m.id_docente = d.id_docente
       JOIN fichas f ON m.id_ficha = f.id_ficha
       JOIN usuarios u ON m.id_evaluador = u.id_usuario
-      LEFT JOIN niveles_desempeno nd ON m.puntaje_total BETWEEN nd.puntaje_minimo AND nd.puntaje_maximo
+      LEFT JOIN LATERAL (
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE puntaje_minimo <= m.puntaje_total
+        ORDER BY puntaje_minimo DESC LIMIT 1
+      ) nd ON true
       WHERE m.id_monitoreo = $1
     `, [id_monitoreo]);
 
@@ -510,18 +526,22 @@ const getAllMonitoreos = async (req, res, next) => {
     const result = await db.query(`
       SELECT 
         m.id_monitoreo, m.fecha, m.numero_visita, m.tipo_monitoreo,
-        m.puntaje_total, m.estado, m.area, m.sesion, 
+        m.puntaje_total, m.estado, m.area, m.sesion,
         COALESCE(nd.nombre, m.nivel_final) as nivel_final, nd.color as nivel_color,
         d.nombres AS docente_nombres, d.apellidos AS docente_apellidos,
         f.nombre AS ficha_nombre,
         i.nombre AS institucion_nombre,
         u.nombres AS evaluador_nombres, u.apellidos AS evaluador_apellidos
       FROM monitoreos m
-      JOIN docentes d      ON m.id_docente   = d.id_docente
-      JOIN fichas f        ON m.id_ficha     = f.id_ficha
+      JOIN docentes d      ON m.id_docente     = d.id_docente
+      JOIN fichas f        ON m.id_ficha       = f.id_ficha
       JOIN instituciones i ON d.id_institucion = i.id_institucion
-      JOIN usuarios u      ON m.id_evaluador = u.id_usuario
-      LEFT JOIN niveles_desempeno nd ON m.puntaje_total BETWEEN nd.puntaje_minimo AND nd.puntaje_maximo
+      JOIN usuarios u      ON m.id_evaluador   = u.id_usuario
+      LEFT JOIN LATERAL (
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE puntaje_minimo <= m.puntaje_total
+        ORDER BY puntaje_minimo DESC LIMIT 1
+      ) nd ON true
       ${whereClause}
       ORDER BY m.fecha DESC, m.id_monitoreo DESC
     `, params);
