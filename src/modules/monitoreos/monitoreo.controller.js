@@ -41,7 +41,7 @@ const getMonitoreosByEvaluador = async (req, res, next) => {
       LEFT JOIN LATERAL (
         SELECT nombre, color 
         FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo
+        ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
         LIMIT 1
       ) nd ON true
       WHERE m.id_evaluador = $1
@@ -64,7 +64,7 @@ const getMonitoreosByDocente = async (req, res, next) => {
       JOIN fichas f ON m.id_ficha = f.id_ficha
       LEFT JOIN LATERAL (
         SELECT nombre, color FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo
+        ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
         LIMIT 1
       ) nd ON true
       WHERE m.id_docente = $1
@@ -197,14 +197,9 @@ const getStats = async (req, res, next) => {
         WITH monitoreo_niveles AS (
           SELECT 
             m.id_monitoreo,
-            COALESCE(
-              (SELECT nombre FROM niveles_desempeno WHERE ROUND(m.puntaje_total::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
-              CASE 
-                WHEN m.puntaje_total > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
-                THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
-                ELSE 'Sin Nivel' 
-              END
-            ) AS nivel_nombre
+            (SELECT nombre FROM niveles_desempeno
+             ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+             LIMIT 1) AS nivel_nombre
           FROM monitoreos m
           JOIN docentes d ON m.id_docente = d.id_docente
           ${whereClause} AND m.estado = 'completado'
@@ -229,14 +224,9 @@ const getStats = async (req, res, next) => {
         WITH tutor_niveles AS (
           SELECT 
             m.id_monitoreo,
-            COALESCE(
-              (SELECT nombre FROM niveles_desempeno WHERE ROUND(m.puntaje_total::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
-              CASE 
-                WHEN m.puntaje_total > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
-                THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
-                ELSE 'Sin Nivel' 
-              END
-            ) AS nivel_nombre
+            (SELECT nombre FROM niveles_desempeno
+             ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+             LIMIT 1) AS nivel_nombre
           FROM monitoreos m
           JOIN docentes d ON m.id_docente = d.id_docente
           JOIN fichas f ON m.id_ficha = f.id_ficha
@@ -277,12 +267,10 @@ const getStats = async (req, res, next) => {
         da.promedio,
         da.visitas_realizadas,
         COALESCE(
-          (SELECT nombre FROM niveles_desempeno WHERE ROUND(da.promedio::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
-          CASE 
-            WHEN da.promedio > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
-            THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
-            ELSE 'Sin Nivel' 
-          END
+          (SELECT nombre FROM niveles_desempeno
+           ORDER BY LEAST(ABS(FLOOR(da.promedio::numeric) - puntaje_minimo), ABS(FLOOR(da.promedio::numeric) - puntaje_maximo))
+           LIMIT 1),
+          'Sin Nivel'
         ) AS nivel_final
       FROM docente_avg da
       ORDER BY da.promedio DESC
@@ -316,12 +304,10 @@ const getStats = async (req, res, next) => {
         ta.promedio,
         ta.visitas_realizadas,
         COALESCE(
-          (SELECT nombre FROM niveles_desempeno WHERE ROUND(ta.promedio::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
-          CASE 
-            WHEN ta.promedio > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
-            THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
-            ELSE 'Sin Nivel' 
-          END
+          (SELECT nombre FROM niveles_desempeno
+           ORDER BY LEAST(ABS(FLOOR(ta.promedio::numeric) - puntaje_minimo), ABS(FLOOR(ta.promedio::numeric) - puntaje_maximo))
+           LIMIT 1),
+          'Sin Nivel'
         ) AS nivel_final
       FROM tutor_avg ta
       ORDER BY ta.promedio DESC
@@ -382,12 +368,15 @@ const getStats = async (req, res, next) => {
       const historyRes = await db.query(`
         SELECT 
           m.*,
-          u.nombres || ' ' || u.apellidos                 AS monitor,
-          COALESCE(n.nombre, m.nivel_final, 'Sin Nivel')  AS nivel_resuelto
+          u.nombres || ' ' || u.apellidos AS monitor,
+          nd.nombre                        AS nivel_resuelto
         FROM monitoreos m
         JOIN usuarios u ON m.id_evaluador = u.id_usuario
-        LEFT JOIN niveles_desempeno n
-          ON ROUND(m.puntaje_total::numeric, 0) BETWEEN n.puntaje_minimo AND n.puntaje_maximo
+        LEFT JOIN LATERAL (
+          SELECT nombre FROM niveles_desempeno
+          ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+          LIMIT 1
+        ) nd ON true
         WHERE m.id_docente = $1
         ORDER BY m.fecha DESC, m.numero_visita DESC
       `, [id_docente]);
@@ -438,7 +427,7 @@ const getMonitoreoDetalle = async (req, res, next) => {
       JOIN usuarios u ON m.id_evaluador = u.id_usuario
       LEFT JOIN LATERAL (
         SELECT nombre, color FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo
+        ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
         LIMIT 1
       ) nd ON true
       WHERE m.id_monitoreo = $1
@@ -540,7 +529,7 @@ const getAllMonitoreos = async (req, res, next) => {
       JOIN usuarios u      ON m.id_evaluador   = u.id_usuario
       LEFT JOIN LATERAL (
         SELECT nombre, color FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total::numeric, 0) BETWEEN puntaje_minimo AND puntaje_maximo
+        ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
         LIMIT 1
       ) nd ON true
       ${whereClause}
