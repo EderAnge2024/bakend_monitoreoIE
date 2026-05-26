@@ -41,7 +41,7 @@ const getMonitoreosByEvaluador = async (req, res, next) => {
       LEFT JOIN LATERAL (
         SELECT nombre, color 
         FROM niveles_desempeno
-        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
+        WHERE m.puntaje_total BETWEEN puntaje_minimo AND puntaje_maximo
         LIMIT 1
       ) nd ON true
       WHERE m.id_evaluador = $1
@@ -64,7 +64,7 @@ const getMonitoreosByDocente = async (req, res, next) => {
       JOIN fichas f ON m.id_ficha = f.id_ficha
       LEFT JOIN LATERAL (
         SELECT nombre, color FROM niveles_desempeno
-        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
+        WHERE m.puntaje_total BETWEEN puntaje_minimo AND puntaje_maximo
         LIMIT 1
       ) nd ON true
       WHERE m.id_docente = $1
@@ -438,7 +438,7 @@ const getMonitoreoDetalle = async (req, res, next) => {
       JOIN usuarios u ON m.id_evaluador = u.id_usuario
       LEFT JOIN LATERAL (
         SELECT nombre, color FROM niveles_desempeno
-        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
+        WHERE m.puntaje_total BETWEEN puntaje_minimo AND puntaje_maximo
         LIMIT 1
       ) nd ON true
       WHERE m.id_monitoreo = $1
@@ -540,7 +540,7 @@ const getAllMonitoreos = async (req, res, next) => {
       JOIN usuarios u      ON m.id_evaluador   = u.id_usuario
       LEFT JOIN LATERAL (
         SELECT nombre, color FROM niveles_desempeno
-        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
+        WHERE m.puntaje_total BETWEEN puntaje_minimo AND puntaje_maximo
         LIMIT 1
       ) nd ON true
       ${whereClause}
