@@ -282,7 +282,47 @@ const getStats = async (req, res, next) => {
       nivel_color: nivelColor(row.nivel_final)
     }));
 
-    // 3.2 Ranking de Tutores — específico para fichas de tutoría
+    // Helper reutilizable para rankings por nivel educativo y tipo de ficha
+    const buildRankingByNivel = async (nivelEducativo, esTutoria) => {
+      const tutoriaFilter = esTutoria
+        ? 'AND f.es_tutoria = true'
+        : 'AND (f.es_tutoria = false OR f.es_tutoria IS NULL)';
+      const nivelFilter = nivelEducativo
+        ? `AND LOWER(COALESCE(d.nivel,'')) LIKE '%${nivelEducativo.toLowerCase()}%'`
+        : '';
+      const res = await db.query(`
+        WITH avg_data AS (
+          SELECT 
+            d.id_docente,
+            d.nombres || ' ' || d.apellidos        AS nombre_docente,
+            i.nombre                                AS institucion,
+            d.nivel                                 AS nivel_educativo,
+            ROUND(AVG(m.puntaje_total)::numeric, 2) AS promedio,
+            COUNT(m.id_monitoreo)::int              AS visitas_realizadas
+          FROM monitoreos m
+          JOIN docentes d      ON m.id_docente     = d.id_docente
+          JOIN instituciones i ON d.id_institucion = i.id_institucion
+          JOIN fichas f        ON m.id_ficha       = f.id_ficha
+          ${whereClause} AND m.estado = 'completado' ${tutoriaFilter} ${nivelFilter}
+          GROUP BY d.id_docente, d.nombres, d.apellidos, i.nombre, d.nivel
+        )
+        SELECT 
+          ad.nombre_docente, ad.institucion, ad.nivel_educativo,
+          ad.promedio, ad.visitas_realizadas,
+          COALESCE(
+            (SELECT nombre FROM niveles_desempeno
+             ORDER BY LEAST(ABS(FLOOR(ad.promedio::numeric) - puntaje_minimo), ABS(FLOOR(ad.promedio::numeric) - puntaje_maximo))
+             LIMIT 1),
+            'Sin Nivel'
+          ) AS nivel_final
+        FROM avg_data ad
+        ORDER BY ad.promedio DESC
+        LIMIT 10
+      `, params);
+      return res.rows.map(row => ({ ...row, nivel_color: nivelColor(row.nivel_final) }));
+    };
+
+    // 3.2 Ranking de Tutores general + separados por nivel educativo
     const rankingTutoresRes = await db.query(`
       WITH tutor_avg AS (
         SELECT 
@@ -299,10 +339,7 @@ const getStats = async (req, res, next) => {
         GROUP BY d.id_docente, d.nombres, d.apellidos, i.nombre
       )
       SELECT 
-        ta.nombre_docente,
-        ta.institucion,
-        ta.promedio,
-        ta.visitas_realizadas,
+        ta.nombre_docente, ta.institucion, ta.promedio, ta.visitas_realizadas,
         COALESCE(
           (SELECT nombre FROM niveles_desempeno
            ORDER BY LEAST(ABS(FLOOR(ta.promedio::numeric) - puntaje_minimo), ABS(FLOOR(ta.promedio::numeric) - puntaje_maximo))
@@ -318,6 +355,18 @@ const getStats = async (req, res, next) => {
       ...row,
       nivel_color: nivelColor(row.nivel_final)
     }));
+
+    // Rankings separados por nivel educativo (primaria / secundaria)
+    const [rdPrimaria, rdSecundaria, rtPrimaria, rtSecundaria] = await Promise.all([
+      buildRankingByNivel('primaria', false),
+      buildRankingByNivel('secundaria', false),
+      buildRankingByNivel('primaria', true),
+      buildRankingByNivel('secundaria', true),
+    ]);
+    stats.rankingDocentesPrimaria   = rdPrimaria;
+    stats.rankingDocentesSecundaria = rdSecundaria;
+    stats.rankingTutoresPrimaria    = rtPrimaria;
+    stats.rankingTutoresSecundaria  = rtSecundaria;
 
     // 3.5 Ranking por Puntaje Acumulado (Suma Total)
     const acumuladoRes = await db.query(`
