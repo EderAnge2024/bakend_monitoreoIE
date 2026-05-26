@@ -8,7 +8,7 @@ const createMonitoreo = async (req, res, next) => {
     recomendaciones, tipo_monitoreo
   } = req.body;
   
-  const id_evaluador = req.user.id;
+  const id_evaluador = req.user.id; // From JWT
 
   try {
     const result = await db.query(
@@ -41,8 +41,7 @@ const getMonitoreosByEvaluador = async (req, res, next) => {
       LEFT JOIN LATERAL (
         SELECT nombre, color 
         FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total) >= rango_min
-        ORDER BY rango_min DESC
+        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
         LIMIT 1
       ) nd ON true
       WHERE m.id_evaluador = $1
@@ -64,10 +63,8 @@ const getMonitoreosByDocente = async (req, res, next) => {
       JOIN usuarios u ON m.id_evaluador = u.id_usuario
       JOIN fichas f ON m.id_ficha = f.id_ficha
       LEFT JOIN LATERAL (
-        SELECT nombre, color 
-        FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total) >= rango_min
-        ORDER BY rango_min DESC
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
         LIMIT 1
       ) nd ON true
       WHERE m.id_docente = $1
@@ -104,6 +101,7 @@ const saveAnswers = async (req, res, next) => {
       }
       await client.query('COMMIT');
       
+      // Calculate final score
       const result = await scoreService.calculateTotalScore(id_monitoreo);
       
       res.json({ message: 'Respuestas guardadas y monitoreo finalizado', ...result });
@@ -126,15 +124,18 @@ const getStats = async (req, res, next) => {
     const params = [];
     let pIdx = 1;
 
+    // Enforce role-based filtering
     const userRole = req.user.role;
     const userIdInstitucion = req.user.id_institucion;
 
     if (userRole === 'director' || userRole === 'especialista' || userRole === 'docente') {
+      // If they have an institution assigned, they can only see that one
       if (userIdInstitucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
         params.push(userIdInstitucion);
       }
     } else if (id_institucion) {
+      // Admins can filter by any institution
       whereClause += ` AND d.id_institucion = $${pIdx++}`;
       params.push(id_institucion);
     }
@@ -154,6 +155,7 @@ const getStats = async (req, res, next) => {
 
     const stats = {};
 
+    // 0. Load niveles_desempeno (check if table/column exists gracefully)
     let niveles = [];
     try {
       const nivelesRes = await db.query(
@@ -163,26 +165,32 @@ const getStats = async (req, res, next) => {
     } catch (_) { niveles = []; }
     stats.niveles = niveles;
 
-    const umbralBajo = niveles.length > 0 ? niveles[0].rango_max : 49;
+    // Determine lowest-performing threshold dynamically
+    // The "bajo desempeño" is the first nivel's max (lowest tier)
+    const umbralBajo = niveles.length > 0 ? niveles[0].puntaje_maximo : 49;
 
+    // Helper: find nivel color by name
     const nivelColor = (nombre) => {
       if (!nombre) return '#94a3b8';
       const found = niveles.find(n => n.nombre === nombre);
       return found?.color || '#6366f1';
     };
 
+    // 1. KPIs
     const kpiRes = await db.query(`
       SELECT 
         COUNT(DISTINCT m.id_docente) as total_docentes,
         ROUND(AVG(m.puntaje_total)::numeric, 2) as promedio_general,
         COUNT(m.id_monitoreo) as total_monitoreos,
-        COUNT(CASE WHEN ROUND(m.puntaje_total) <= ${umbralBajo} THEN 1 END) as alertas_bajo_desempeno
+        COUNT(CASE WHEN m.puntaje_total <= ${umbralBajo} THEN 1 END) as alertas_bajo_desempeno
       FROM monitoreos m
       JOIN docentes d ON m.id_docente = d.id_docente
       ${whereClause} AND m.estado = 'completado'
     `, params);
     stats.kpis = kpiRes.rows[0];
 
+    // 2. Distribución por nivel — JOIN con niveles_desempeno por rango de puntaje
+    // 2. Distribución de Niveles (Pedagógicos + Tutoría juntos para el general)
     let distRows = [];
     if (niveles.length > 0) {
       const distRes = await db.query(`
@@ -190,9 +198,12 @@ const getStats = async (req, res, next) => {
           SELECT 
             m.id_monitoreo,
             COALESCE(
-              (SELECT nombre FROM niveles_desempeno WHERE ROUND(m.puntaje_total) >= rango_min ORDER BY rango_min DESC LIMIT 1),
-              (SELECT nombre FROM niveles_desempeno ORDER BY rango_min DESC LIMIT 1),
-              'Sin Nivel'
+              (SELECT nombre FROM niveles_desempeno WHERE m.puntaje_total BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
+              CASE 
+                WHEN m.puntaje_total > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
+                THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
+                ELSE 'Sin Nivel' 
+              END
             ) AS nivel_nombre
           FROM monitoreos m
           JOIN docentes d ON m.id_docente = d.id_docente
@@ -211,6 +222,7 @@ const getStats = async (req, res, next) => {
     }
     stats.distribucionNiveles = distRows;
 
+    // 2.5 Distribución específica para Tutoría
     let tutorDistRows = [];
     if (niveles.length > 0) {
       const tutorDistRes = await db.query(`
@@ -218,9 +230,12 @@ const getStats = async (req, res, next) => {
           SELECT 
             m.id_monitoreo,
             COALESCE(
-              (SELECT nombre FROM niveles_desempeno WHERE ROUND(m.puntaje_total) >= rango_min ORDER BY rango_min DESC LIMIT 1),
-              (SELECT nombre FROM niveles_desempeno ORDER BY rango_min DESC LIMIT 1),
-              'Sin Nivel'
+              (SELECT nombre FROM niveles_desempeno WHERE m.puntaje_total BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
+              CASE 
+                WHEN m.puntaje_total > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
+                THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
+                ELSE 'Sin Nivel' 
+              END
             ) AS nivel_nombre
           FROM monitoreos m
           JOIN docentes d ON m.id_docente = d.id_docente
@@ -240,6 +255,8 @@ const getStats = async (req, res, next) => {
     }
     stats.distribucionTutores = tutorDistRows;
 
+    // 3. Ranking de Docentes — nivel calculado dinámicamente desde el promedio
+    // n.color NO se incluye en SQL para evitar error si la columna no existe
     const rankingRes = await db.query(`
       WITH docente_avg AS (
         SELECT 
@@ -260,20 +277,24 @@ const getStats = async (req, res, next) => {
         da.promedio,
         da.visitas_realizadas,
         COALESCE(
-          (SELECT nombre FROM niveles_desempeno WHERE ROUND(da.promedio) >= rango_min ORDER BY rango_min DESC LIMIT 1),
-          (SELECT nombre FROM niveles_desempeno ORDER BY rango_min DESC LIMIT 1),
-          'Sin Nivel'
+          (SELECT nombre FROM niveles_desempeno WHERE da.promedio BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
+          CASE 
+            WHEN da.promedio > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
+            THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
+            ELSE 'Sin Nivel' 
+          END
         ) AS nivel_final
       FROM docente_avg da
       ORDER BY da.promedio DESC
       LIMIT 10
     `, params);
-    
+    // Resolver color en JS (independiente de si columna color existe en BD)
     stats.rankingDocentes = rankingRes.rows.map(row => ({
       ...row,
       nivel_color: nivelColor(row.nivel_final)
     }));
 
+    // 3.2 Ranking de Tutores — específico para fichas de tutoría
     const rankingTutoresRes = await db.query(`
       WITH tutor_avg AS (
         SELECT 
@@ -295,9 +316,12 @@ const getStats = async (req, res, next) => {
         ta.promedio,
         ta.visitas_realizadas,
         COALESCE(
-          (SELECT nombre FROM niveles_desempeno WHERE ROUND(ta.promedio) >= rango_min ORDER BY rango_min DESC LIMIT 1),
-          (SELECT nombre FROM niveles_desempeno ORDER BY rango_min DESC LIMIT 1),
-          'Sin Nivel'
+          (SELECT nombre FROM niveles_desempeno WHERE ta.promedio BETWEEN puntaje_minimo AND puntaje_maximo LIMIT 1),
+          CASE 
+            WHEN ta.promedio > (SELECT MAX(puntaje_maximo) FROM niveles_desempeno) 
+            THEN (SELECT nombre FROM niveles_desempeno ORDER BY puntaje_maximo DESC LIMIT 1)
+            ELSE 'Sin Nivel' 
+          END
         ) AS nivel_final
       FROM tutor_avg ta
       ORDER BY ta.promedio DESC
@@ -309,6 +333,7 @@ const getStats = async (req, res, next) => {
       nivel_color: nivelColor(row.nivel_final)
     }));
 
+    // 3.5 Ranking por Puntaje Acumulado (Suma Total)
     const acumuladoRes = await db.query(`
       SELECT 
         d.nombres || ' ' || d.apellidos        AS nombre_docente,
@@ -325,6 +350,7 @@ const getStats = async (req, res, next) => {
     `, params);
     stats.rankingAcumulado = acumuladoRes.rows;
 
+    // 4. Evolución Temporal
     const evolutionRes = await db.query(`
       SELECT 
         m.fecha, 
@@ -337,6 +363,7 @@ const getStats = async (req, res, next) => {
     `, params);
     stats.evolucion = evolutionRes.rows;
 
+    // 5. Estadísticas por Institución
     const instRes = await db.query(`
       SELECT 
         i.nombre, 
@@ -350,22 +377,21 @@ const getStats = async (req, res, next) => {
     `, params);
     stats.porInstitucion = instRes.rows;
 
+    // 6. Historial Detallado si se selecciona un docente
     if (id_docente) {
       const historyRes = await db.query(`
         SELECT 
           m.*,
           u.nombres || ' ' || u.apellidos                 AS monitor,
-          COALESCE(
-            (SELECT nombre FROM niveles_desempeno WHERE ROUND(m.puntaje_total) >= rango_min ORDER BY rango_min DESC LIMIT 1),
-            m.nivel_final,
-            'Sin Nivel'
-          ) AS nivel_resuelto
+          COALESCE(n.nombre, m.nivel_final, 'Sin Nivel')  AS nivel_resuelto
         FROM monitoreos m
         JOIN usuarios u ON m.id_evaluador = u.id_usuario
+        LEFT JOIN niveles_desempeno n
+          ON m.puntaje_total BETWEEN n.puntaje_minimo AND n.puntaje_maximo
         WHERE m.id_docente = $1
         ORDER BY m.fecha DESC, m.numero_visita DESC
       `, [id_docente]);
-      
+      // Color resuelto en JS (evita error si columna color no existe en BD)
       stats.historialDocente = historyRes.rows.map(row => ({
         ...row,
         nivel_final: row.nivel_resuelto,
@@ -401,6 +427,7 @@ const getEvaluadosByPeriodo = async (req, res, next) => {
 const getMonitoreoDetalle = async (req, res, next) => {
   const { id_monitoreo } = req.params;
   try {
+    // 1. Get header
     const headerRes = await db.query(`
       SELECT m.*, nd.color as nivel_color, COALESCE(nd.nombre, m.nivel_final) as nivel_final,
              d.nombres as docente_nombres, d.apellidos as docente_apellidos,
@@ -410,10 +437,8 @@ const getMonitoreoDetalle = async (req, res, next) => {
       JOIN fichas f ON m.id_ficha = f.id_ficha
       JOIN usuarios u ON m.id_evaluador = u.id_usuario
       LEFT JOIN LATERAL (
-        SELECT nombre, color 
-        FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total) >= rango_min
-        ORDER BY rango_min DESC
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
         LIMIT 1
       ) nd ON true
       WHERE m.id_monitoreo = $1
@@ -421,6 +446,7 @@ const getMonitoreoDetalle = async (req, res, next) => {
 
     if (headerRes.rows.length === 0) return res.status(404).json({ message: 'Monitoreo no encontrado' });
 
+    // 2. Get answers grouped by category
     const answersRes = await db.query(`
       SELECT 
         r.*, 
@@ -445,6 +471,7 @@ const getMonitoreoDetalle = async (req, res, next) => {
   }
 };
 
+// Obtener TODOS los monitoreos con filtros y control de acceso por rol
 const getAllMonitoreos = async (req, res, next) => {
   const { search, id_periodo, estado, tipo_monitoreo } = req.query;
   const { role, id_institucion, id: id_usuario } = req.user;
@@ -454,22 +481,27 @@ const getAllMonitoreos = async (req, res, next) => {
     let pIdx = 1;
     let whereClause = 'WHERE 1=1';
 
+    // --- Control de acceso por rol ---
     if (role === 'docente') {
+      // Docente: solo ve sus propios monitoreos (busca su id_docente via la tabla docentes)
       const docenteRes = await db.query(
         'SELECT id_docente FROM docentes WHERE id_usuario = $1 LIMIT 1', [id_usuario]
       );
       if (docenteRes.rows.length === 0) {
-        return res.json([]);
+        return res.json([]); // Docente sin registro, sin monitoreos
       }
       whereClause += ` AND m.id_docente = $${pIdx++}`;
       params.push(docenteRes.rows[0].id_docente);
     } else if (role === 'director') {
+      // Director: solo ve los monitoreos de docentes de su IE
       if (id_institucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
         params.push(id_institucion);
       }
     }
+    // Administrador: ve todo, sin filtro adicional
 
+    // --- Filtros opcionales de query ---
     if (id_periodo) {
       whereClause += ` AND m.id_periodo = $${pIdx++}`;
       params.push(id_periodo);
@@ -507,10 +539,8 @@ const getAllMonitoreos = async (req, res, next) => {
       JOIN instituciones i ON d.id_institucion = i.id_institucion
       JOIN usuarios u      ON m.id_evaluador   = u.id_usuario
       LEFT JOIN LATERAL (
-        SELECT nombre, color 
-        FROM niveles_desempeno
-        WHERE ROUND(m.puntaje_total) >= rango_min
-        ORDER BY rango_min DESC
+        SELECT nombre, color FROM niveles_desempeno
+        WHERE m.puntaje_total BETWEEN rango_min AND rango_max
         LIMIT 1
       ) nd ON true
       ${whereClause}
@@ -526,6 +556,7 @@ const getAllMonitoreos = async (req, res, next) => {
 const deleteMonitoreo = async (req, res, next) => {
   const { id_monitoreo } = req.params;
   
+  // Extra security check just in case the middleware is bypassed or we want a controller-level check
   if (req.user.role !== 'administrador') {
     return res.status(403).json({ message: 'Prohibido: Solo los administradores pueden eliminar monitoreos.' });
   }
@@ -554,3 +585,4 @@ module.exports = {
   getMonitoreoDetalle,
   deleteMonitoreo
 };
+
