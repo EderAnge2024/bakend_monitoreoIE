@@ -8,7 +8,7 @@ const calculateTotalScore = async (id_monitoreo) => {
   try {
     // 1. Get all answers for this monitoring
     const result = await db.query(`
-      SELECT SUM(puntaje)::numeric as sum_total, COUNT(id_pregunta)::numeric as count_preguntas 
+      SELECT SUM(puntaje)::numeric as sum_total, COUNT(id_pregunta)::numeric as count_preguntas
       FROM respuestas 
       WHERE id_monitoreo = $1
     `, [id_monitoreo]);
@@ -17,10 +17,7 @@ const calculateTotalScore = async (id_monitoreo) => {
     const countPreguntas = parseInt(result.rows[0].count_preguntas || 1, 10);
     const totalScore = parseFloat((sumTotal / (countPreguntas > 0 ? countPreguntas : 1)).toFixed(2));
 
-    // 2. Determinar nivel de desempeño:
-    //    Busca el nivel cuyo puntaje_minimo sea <= al puntaje obtenido,
-    //    ordenado de mayor a menor → el nivel más alto alcanzado.
-    //    Esto evita huecos entre rangos sin importar los decimales.
+    // 2. Determinar nivel de desempeño
     let levelRes = await db.query(`
       SELECT nombre 
       FROM niveles_desempeno 
