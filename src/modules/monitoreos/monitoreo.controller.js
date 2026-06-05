@@ -995,6 +995,6 @@ module.exports = {
   getMonitoreoDetalle,
   deleteMonitoreo,
   getSeguimiento,
-  exportToExcel: exportToExcelAdvanced
+  exportToExcel
 };
 
