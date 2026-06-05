@@ -7,22 +7,15 @@ const db = require('../config/database');
  */
 const calculateTotalScore = async (id_monitoreo) => {
   try {
-    // 1. Sumar puntajes y contar preguntas respondidas
+    // 1. Sumar puntajes — las respuestas SI/NO tienen valor 0 y no afectan la suma
     const result = await db.query(`
-      SELECT 
-        SUM(puntaje)::numeric      AS sum_total,
-        COUNT(id_pregunta)::numeric AS count_preguntas
+      SELECT SUM(puntaje)::numeric AS sum_total
       FROM respuestas
       WHERE id_monitoreo = $1
     `, [id_monitoreo]);
 
-    const sumTotal       = parseFloat(result.rows[0].sum_total       || 0);
-    const countPreguntas = parseInt(result.rows[0].count_preguntas   || 1, 10);
-
-    // 2. Promedio = suma / cantidad de preguntas
-    const totalScore = parseFloat(
-      (sumTotal / (countPreguntas > 0 ? countPreguntas : 1)).toFixed(2)
-    );
+    const sumTotal   = parseFloat(result.rows[0].sum_total || 0);
+    const totalScore = parseFloat(sumTotal.toFixed(2));
 
     // 3. Ubicar en nivel: primer nivel cuyo puntaje_minimo <= totalScore,
     //    ordenado de mayor a menor para obtener el nivel más alto alcanzado
