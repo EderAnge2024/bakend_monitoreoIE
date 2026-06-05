@@ -844,89 +844,183 @@ const exportToExcel = async (req, res, next) => {
       ORDER BY d.id_docente, m.fecha DESC, m.numero_visita DESC
     `, params);
 
-    // Crear workbook
-    const wb = XLSX.utils.book_new();
+    // Crear workbook con ExcelJS
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Sistema de Monitoreo IE';
+    wb.created = new Date();
 
-    // Hoja 1: Resumen por Docente
-    const resumenData = result.rows.map(row => ({
-      'DNI': row.dni || '',
-      'Docente': row.docente,
-      'Institución': row.institucion,
-      'Periodo': row.periodo || 'Varios',
-      'Nivel Educativo': row.nivel_educativo || '',
-      'Área': row.area || '',
-      'Total Monitoreos': row.total_monitoreos,
-      'Promedio': row.promedio_puntaje,
-      'Puntaje Máximo': row.puntaje_maximo,
-      'Puntaje Mínimo': row.puntaje_minimo,
-      'Nivel de Desempeño': row.nivel_desempeno,
-      'Instrumentos Usados': row.instrumentos_usados,
-      'Primera Visita': row.primera_visita ? new Date(row.primera_visita).toLocaleDateString('es-PE') : '',
-      'Última Visita': row.ultima_visita ? new Date(row.ultima_visita).toLocaleDateString('es-PE') : ''
-    }));
+    // Estilos reutilizables
+    const headerStyle = {
+      font: { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D47A1' } }, // Azul oscuro
+      alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } }
+      }
+    };
 
-    const wsResumen = XLSX.utils.json_to_sheet(resumenData);
+    const rowStyle = {
+      font: { name: 'Arial', size: 10, color: { argb: 'FF000000' } },
+      alignment: { vertical: 'middle', horizontal: 'left', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+        left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+        bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+        right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+      }
+    };
     
-    // Ajustar anchos de columna para mejor visualización
-    wsResumen['!cols'] = [
-      { wch: 12 },  // DNI
-      { wch: 35 },  // Docente
-      { wch: 40 },  // Institución
-      { wch: 18 },  // Periodo
-      { wch: 18 },  // Nivel Educativo
-      { wch: 25 },  // Área
-      { wch: 15 },  // Total Monitoreos
-      { wch: 12 },  // Promedio
-      { wch: 15 },  // Puntaje Máximo
-      { wch: 15 },  // Puntaje Mínimo
-      { wch: 20 },  // Nivel de Desempeño
-      { wch: 50 },  // Instrumentos Usados
-      { wch: 15 },  // Primera Visita
-      { wch: 15 }   // Última Visita
-    ];
+    // Función para obtener color según nivel (Verde, Amarillo, Marrón, Negro)
+    const getNivelStyle = (nivel) => {
+      const lowerNivel = (nivel || '').toLowerCase();
+      let color = 'FFFFFFFF';
+      let fontColor = 'FF000000';
+      if (lowerNivel.includes('destacado') || lowerNivel.includes('satisfactorio')) {
+        color = 'FF4CAF50'; // Verde
+        fontColor = 'FFFFFFFF';
+      } else if (lowerNivel.includes('proceso')) {
+        color = 'FFFFEB3B'; // Amarillo
+      } else if (lowerNivel.includes('inicio') || lowerNivel.includes('bajo')) {
+        color = 'FF795548'; // Marrón
+        fontColor = 'FFFFFFFF';
+      } else if (lowerNivel.includes('insatisfactorio')) {
+        color = 'FF212121'; // Negro
+        fontColor = 'FFFFFFFF';
+      }
+      return {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: color } },
+        font: { name: 'Arial', size: 10, bold: true, color: { argb: fontColor } },
+        alignment: { vertical: 'middle', horizontal: 'center' }
+      };
+    };
 
-    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen por Docente');
+    const configSheet = (sheet, columns) => {
+      sheet.columns = columns;
+      sheet.getRow(1).height = 30;
+      sheet.getRow(1).eachCell((cell) => {
+        cell.font = headerStyle.font;
+        cell.fill = headerStyle.fill;
+        cell.alignment = headerStyle.alignment;
+        cell.border = headerStyle.border;
+      });
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: 1, column: columns.length }
+      };
+    };
 
-    // Hoja 2: Detalle de Monitoreos
-    const detalleData = detalleResult.rows.map(row => ({
-      'ID Monitoreo': row.id_monitoreo,
-      'Docente': row.docente,
-      'Fecha': row.fecha ? new Date(row.fecha).toLocaleDateString('es-PE') : '',
-      'Visita Nº': row.numero_visita,
-      'Instrumento': row.instrumento,
-      'Área': row.area || '',
-      'Sesión': row.sesion || '',
-      'Puntaje': row.puntaje_total,
-      'Nivel': row.nivel,
-      'Evaluador': row.evaluador,
-      'Compromiso': row.compromiso_docente || '',
-      'Observaciones': row.observaciones_generales || '',
-      'Recomendaciones': row.recomendaciones || ''
-    }));
+    // --- Hoja 1: Resumen por Docente ---
+    const wsResumen = wb.addWorksheet('Resumen por Docente');
+    configSheet(wsResumen, [
+      { header: 'DNI', key: 'dni', width: 12 },
+      { header: 'Docente', key: 'docente', width: 35 },
+      { header: 'Institución', key: 'institucion', width: 40 },
+      { header: 'Periodo', key: 'periodo', width: 18 },
+      { header: 'Nivel Educativo', key: 'nivel_educativo', width: 18 },
+      { header: 'Área', key: 'area', width: 25 },
+      { header: 'Total Monitoreos', key: 'total_monitoreos', width: 15 },
+      { header: 'Promedio', key: 'promedio', width: 12 },
+      { header: 'Puntaje Máximo', key: 'puntaje_maximo', width: 15 },
+      { header: 'Puntaje Mínimo', key: 'puntaje_minimo', width: 15 },
+      { header: 'Nivel de Desempeño', key: 'nivel_desempeno', width: 20 },
+      { header: 'Instrumentos Usados', key: 'instrumentos_usados', width: 40 },
+      { header: 'Primera Visita', key: 'primera_visita', width: 15 },
+      { header: 'Última Visita', key: 'ultima_visita', width: 15 }
+    ]);
 
-    const wsDetalle = XLSX.utils.json_to_sheet(detalleData);
-    
-    // Ajustar anchos para mejor legibilidad
-    wsDetalle['!cols'] = [
-      { wch: 12 },  // ID Monitoreo
-      { wch: 35 },  // Docente
-      { wch: 12 },  // Fecha
-      { wch: 10 },  // Visita Nº
-      { wch: 30 },  // Instrumento
-      { wch: 20 },  // Área
-      { wch: 30 },  // Sesión
-      { wch: 10 },  // Puntaje
-      { wch: 20 },  // Nivel
-      { wch: 30 },  // Evaluador
-      { wch: 50 },  // Compromiso
-      { wch: 60 },  // Observaciones
-      { wch: 60 }   // Recomendaciones
-    ];
+    result.rows.forEach(row => {
+      const dbRow = wsResumen.addRow({
+        dni: row.dni || '',
+        docente: row.docente,
+        institucion: row.institucion,
+        periodo: row.periodo || 'Varios',
+        nivel_educativo: row.nivel_educativo || '',
+        area: row.area || '',
+        total_monitoreos: row.total_monitoreos,
+        promedio: row.promedio_puntaje ? Number(row.promedio_puntaje) : 0,
+        puntaje_maximo: row.puntaje_maximo ? Number(row.puntaje_maximo) : 0,
+        puntaje_minimo: row.puntaje_minimo ? Number(row.puntaje_minimo) : 0,
+        nivel_desempeno: row.nivel_desempeno,
+        instrumentos_usados: row.instrumentos_usados,
+        primera_visita: row.primera_visita ? new Date(row.primera_visita) : '',
+        ultima_visita: row.ultima_visita ? new Date(row.ultima_visita) : ''
+      });
+      
+      dbRow.eachCell(cell => { cell.style = { ...cell.style, ...rowStyle }; });
+      
+      const nivelCell = dbRow.getCell('nivel_desempeno');
+      const nivelStyle = getNivelStyle(row.nivel_desempeno);
+      nivelCell.fill = nivelStyle.fill;
+      nivelCell.font = nivelStyle.font;
+      nivelCell.alignment = nivelStyle.alignment;
+      
+      dbRow.getCell('promedio').numFmt = '0.00';
+      if (row.primera_visita) dbRow.getCell('primera_visita').numFmt = 'dd/mm/yyyy';
+      if (row.ultima_visita) dbRow.getCell('ultima_visita').numFmt = 'dd/mm/yyyy';
+    });
 
-    XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle de Monitoreos');
+    // --- Hoja 2: Detalle de Monitoreos ---
+    const wsDetalle = wb.addWorksheet('Detalle de Monitoreos');
+    configSheet(wsDetalle, [
+      { header: 'ID Monitoreo', key: 'id_monitoreo', width: 12 },
+      { header: 'Docente', key: 'docente', width: 35 },
+      { header: 'Fecha', key: 'fecha', width: 12 },
+      { header: 'Visita Nº', key: 'numero_visita', width: 10 },
+      { header: 'Instrumento', key: 'instrumento', width: 30 },
+      { header: 'Área', key: 'area', width: 20 },
+      { header: 'Sesión', key: 'sesion', width: 30 },
+      { header: 'Puntaje', key: 'puntaje', width: 10 },
+      { header: 'Nivel', key: 'nivel', width: 20 },
+      { header: 'Evaluador', key: 'evaluador', width: 30 },
+      { header: 'Compromiso', key: 'compromiso', width: 45 },
+      { header: 'Observaciones', key: 'observaciones', width: 45 },
+      { header: 'Recomendaciones', key: 'recomendaciones', width: 45 }
+    ]);
 
-    // Hoja 3: Evolución por Docente (si hay un docente específico)
+    detalleResult.rows.forEach(row => {
+      const dbRow = wsDetalle.addRow({
+        id_monitoreo: row.id_monitoreo,
+        docente: row.docente,
+        fecha: row.fecha ? new Date(row.fecha) : '',
+        numero_visita: row.numero_visita,
+        instrumento: row.instrumento,
+        area: row.area || '',
+        sesion: row.sesion || '',
+        puntaje: row.puntaje_total ? Number(row.puntaje_total) : 0,
+        nivel: row.nivel,
+        evaluador: row.evaluador,
+        compromiso: row.compromiso_docente || '',
+        observaciones: row.observaciones_generales || '',
+        recomendaciones: row.recomendaciones || ''
+      });
+      
+      dbRow.eachCell(cell => { cell.style = { ...cell.style, ...rowStyle }; });
+      
+      const nivelCell = dbRow.getCell('nivel');
+      const nivelStyle = getNivelStyle(row.nivel);
+      nivelCell.fill = nivelStyle.fill;
+      nivelCell.font = nivelStyle.font;
+      nivelCell.alignment = nivelStyle.alignment;
+      
+      if (row.fecha) dbRow.getCell('fecha').numFmt = 'dd/mm/yyyy';
+      dbRow.getCell('puntaje').numFmt = '0.00';
+    });
+
+    // --- Hoja 3: Evolución por Docente (si hay un docente específico) ---
     if (id_docente) {
+      const wsEvolucion = wb.addWorksheet('Evolución Docente');
+      configSheet(wsEvolucion, [
+        { header: 'Orden', key: 'orden', width: 8 },
+        { header: 'Fecha', key: 'fecha', width: 12 },
+        { header: 'Visita Nº', key: 'numero_visita', width: 10 },
+        { header: 'Instrumento', key: 'instrumento', width: 30 },
+        { header: 'Puntaje', key: 'puntaje', width: 10 },
+        { header: 'Nivel', key: 'nivel', width: 20 }
+      ]);
+
       const evolucionResult = await db.query(`
         SELECT 
           m.fecha,
@@ -946,32 +1040,31 @@ const exportToExcel = async (req, res, next) => {
         ORDER BY m.fecha ASC, m.numero_visita ASC
       `, [id_docente]);
 
-      const evolucionData = evolucionResult.rows.map((row, idx) => ({
-        'Orden': idx + 1,
-        'Fecha': row.fecha ? new Date(row.fecha).toLocaleDateString('es-PE') : '',
-        'Visita Nº': row.numero_visita,
-        'Instrumento': row.instrumento,
-        'Puntaje': row.puntaje_total,
-        'Nivel': row.nivel
-      }));
-
-      const wsEvolucion = XLSX.utils.json_to_sheet(evolucionData);
-      
-      // Anchos optimizados para la hoja de evolución
-      wsEvolucion['!cols'] = [
-        { wch: 8 },   // Orden
-        { wch: 12 },  // Fecha
-        { wch: 10 },  // Visita Nº
-        { wch: 30 },  // Instrumento
-        { wch: 10 },  // Puntaje
-        { wch: 20 }   // Nivel
-      ];
-      
-      XLSX.utils.book_append_sheet(wb, wsEvolucion, 'Evolución Docente');
+      evolucionResult.rows.forEach((row, idx) => {
+        const dbRow = wsEvolucion.addRow({
+          orden: idx + 1,
+          fecha: row.fecha ? new Date(row.fecha) : '',
+          numero_visita: row.numero_visita,
+          instrumento: row.instrumento,
+          puntaje: row.puntaje_total ? Number(row.puntaje_total) : 0,
+          nivel: row.nivel
+        });
+        
+        dbRow.eachCell(cell => { cell.style = { ...cell.style, ...rowStyle }; });
+        
+        const nivelCell = dbRow.getCell('nivel');
+        const nivelStyle = getNivelStyle(row.nivel);
+        nivelCell.fill = nivelStyle.fill;
+        nivelCell.font = nivelStyle.font;
+        nivelCell.alignment = nivelStyle.alignment;
+        
+        if (row.fecha) dbRow.getCell('fecha').numFmt = 'dd/mm/yyyy';
+        dbRow.getCell('puntaje').numFmt = '0.00';
+      });
     }
 
-    // Generar buffer
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    // Generar buffer asíncrono con ExcelJS
+    const buffer = await wb.xlsx.writeBuffer();
 
     // Establecer headers de respuesta
     const filename = `Reporte_Monitoreos_${new Date().toISOString().slice(0, 10)}.xlsx`;
