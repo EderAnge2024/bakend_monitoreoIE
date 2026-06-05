@@ -128,9 +128,19 @@ const getStats = async (req, res, next) => {
     const userRole = req.user.role;
     const userIdInstitucion = req.user.id_institucion;
 
-    if (userRole === 'director' || userRole === 'especialista' || userRole === 'docente') {
+    if (userRole === 'director' || userRole === 'docente') {
       // If they have an institution assigned, they can only see that one
       if (userIdInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userIdInstitucion);
+      }
+    } else if (userRole === 'especialista') {
+      // Specialist: can filter by any institution via query param
+      if (id_institucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(id_institucion);
+      } else if (userIdInstitucion) {
+        // Default to their own institution if no filter is provided
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
         params.push(userIdInstitucion);
       }
@@ -511,8 +521,8 @@ const getMonitoreoDetalle = async (req, res, next) => {
 
 // Obtener TODOS los monitoreos con filtros y control de acceso por rol
 const getAllMonitoreos = async (req, res, next) => {
-  const { search, id_periodo, estado, tipo_monitoreo } = req.query;
-  const { role, id_institucion, id: id_usuario } = req.user;
+  const { search, id_periodo, estado, tipo_monitoreo, id_institucion: queryIdInstitucion } = req.query;
+  const { role, id_institucion: userInstitucion, id: id_usuario } = req.user;
 
   try {
     const params = [];
@@ -532,12 +542,22 @@ const getAllMonitoreos = async (req, res, next) => {
       params.push(docenteRes.rows[0].id_docente);
     } else if (role === 'director') {
       // Director: solo ve los monitoreos de docentes de su IE
-      if (id_institucion) {
+      if (userInstitucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
-        params.push(id_institucion);
+        params.push(userInstitucion);
       }
+    } else if (role === 'especialista') {
+      if (queryIdInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(queryIdInstitucion);
+      } else if (userInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userInstitucion);
+      }
+    } else if (queryIdInstitucion) {
+      whereClause += ` AND d.id_institucion = $${pIdx++}`;
+      params.push(queryIdInstitucion);
     }
-    // Administrador: ve todo, sin filtro adicional
 
     // --- Filtros opcionales de query ---
     if (id_periodo) {
@@ -612,6 +632,9 @@ const deleteMonitoreo = async (req, res, next) => {
   }
 };
 
+// Importar la función avanzada de exportación
+const ExcelJS = require('exceljs');
+
 const XLSX = require('xlsx');
 
 const getSeguimiento = async (req, res, next) => {
@@ -624,8 +647,16 @@ const getSeguimiento = async (req, res, next) => {
     let pIdx = 2;
 
     // Control de acceso por rol
-    if (role === 'director' || role === 'especialista') {
+    if (role === 'director') {
       if (userIdInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userIdInstitucion);
+      }
+    } else if (role === 'especialista') {
+      if (id_institucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(id_institucion);
+      } else if (userIdInstitucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
         params.push(userIdInstitucion);
       }
@@ -713,12 +744,24 @@ const exportToExcel = async (req, res, next) => {
     let pIdx = 2;
 
     // Control de acceso por rol
-    if (role === 'director' || role === 'especialista') {
+    if (role === 'director') {
+      // Director: limit to their own institution
       if (userIdInstitucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
         params.push(userIdInstitucion);
       }
+    } else if (role === 'especialista') {
+      // Specialist: can filter by any institution via query param
+      if (id_institucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(id_institucion);
+      } else if (userIdInstitucion) {
+        // If no specific institution provided, default to their own
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userIdInstitucion);
+      }
     } else if (id_institucion) {
+      // Administrador or other roles: allow any institution filter
       whereClause += ` AND d.id_institucion = $${pIdx++}`;
       params.push(id_institucion);
     }
@@ -824,11 +867,22 @@ const exportToExcel = async (req, res, next) => {
 
     const wsResumen = XLSX.utils.json_to_sheet(resumenData);
     
-    // Ajustar anchos de columna
+    // Ajustar anchos de columna para mejor visualización
     wsResumen['!cols'] = [
-      { wch: 12 }, { wch: 30 }, { wch: 35 }, { wch: 15 }, { wch: 15 },
-      { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
-      { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 12 }
+      { wch: 12 },  // DNI
+      { wch: 35 },  // Docente
+      { wch: 40 },  // Institución
+      { wch: 18 },  // Periodo
+      { wch: 18 },  // Nivel Educativo
+      { wch: 25 },  // Área
+      { wch: 15 },  // Total Monitoreos
+      { wch: 12 },  // Promedio
+      { wch: 15 },  // Puntaje Máximo
+      { wch: 15 },  // Puntaje Mínimo
+      { wch: 20 },  // Nivel de Desempeño
+      { wch: 50 },  // Instrumentos Usados
+      { wch: 15 },  // Primera Visita
+      { wch: 15 }   // Última Visita
     ];
 
     XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen por Docente');
@@ -852,10 +906,21 @@ const exportToExcel = async (req, res, next) => {
 
     const wsDetalle = XLSX.utils.json_to_sheet(detalleData);
     
+    // Ajustar anchos para mejor legibilidad
     wsDetalle['!cols'] = [
-      { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 8 }, { wch: 25 },
-      { wch: 15 }, { wch: 20 }, { wch: 10 }, { wch: 18 }, { wch: 25 },
-      { wch: 30 }, { wch: 40 }, { wch: 40 }
+      { wch: 12 },  // ID Monitoreo
+      { wch: 35 },  // Docente
+      { wch: 12 },  // Fecha
+      { wch: 10 },  // Visita Nº
+      { wch: 30 },  // Instrumento
+      { wch: 20 },  // Área
+      { wch: 30 },  // Sesión
+      { wch: 10 },  // Puntaje
+      { wch: 20 },  // Nivel
+      { wch: 30 },  // Evaluador
+      { wch: 50 },  // Compromiso
+      { wch: 60 },  // Observaciones
+      { wch: 60 }   // Recomendaciones
     ];
 
     XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle de Monitoreos');
@@ -891,7 +956,17 @@ const exportToExcel = async (req, res, next) => {
       }));
 
       const wsEvolucion = XLSX.utils.json_to_sheet(evolucionData);
-      wsEvolucion['!cols'] = [{ wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 25 }, { wch: 10 }, { wch: 18 }];
+      
+      // Anchos optimizados para la hoja de evolución
+      wsEvolucion['!cols'] = [
+        { wch: 8 },   // Orden
+        { wch: 12 },  // Fecha
+        { wch: 10 },  // Visita Nº
+        { wch: 30 },  // Instrumento
+        { wch: 10 },  // Puntaje
+        { wch: 20 }   // Nivel
+      ];
+      
       XLSX.utils.book_append_sheet(wb, wsEvolucion, 'Evolución Docente');
     }
 
@@ -920,6 +995,6 @@ module.exports = {
   getMonitoreoDetalle,
   deleteMonitoreo,
   getSeguimiento,
-  exportToExcel
+  exportToExcel: exportToExcelAdvanced
 };
 
