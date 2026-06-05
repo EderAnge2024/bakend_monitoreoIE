@@ -21,6 +21,7 @@ const solicitudRoutes = require('./modules/solicitudes/solicitud.routes');
 const rolesRoutes = require('./modules/roles/roles.routes');
 const notificationRoutes = require('./modules/notifications/notification.routes');
 const documentoRoutes = require('./modules/documentos/documento.routes');
+const reporteRoutes   = require('./modules/reportes/reporte.routes');
 
 
 const app = express();
@@ -108,6 +109,7 @@ app.use('/api/solicitudes', solicitudRoutes);
 app.use('/api/roles', rolesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/documentos', documentoRoutes);
+app.use('/api/reportes', reporteRoutes);
 
 
 app.get('/', (req, res) => {

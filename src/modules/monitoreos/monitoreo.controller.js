@@ -612,6 +612,303 @@ const deleteMonitoreo = async (req, res, next) => {
   }
 };
 
+const XLSX = require('xlsx');
+
+const getSeguimiento = async (req, res, next) => {
+  const { id_institucion, id_periodo, id_ficha } = req.query;
+  const { role, id_institucion: userIdInstitucion } = req.user;
+
+  try {
+    let whereClause = 'WHERE m.estado = $1';
+    const params = ['completado'];
+    let pIdx = 2;
+
+    // Control de acceso por rol
+    if (role === 'director' || role === 'especialista') {
+      if (userIdInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userIdInstitucion);
+      }
+    } else if (id_institucion) {
+      whereClause += ` AND d.id_institucion = $${pIdx++}`;
+      params.push(id_institucion);
+    }
+
+    if (id_periodo) {
+      whereClause += ` AND m.id_periodo = $${pIdx++}`;
+      params.push(id_periodo);
+    }
+    if (id_ficha) {
+      whereClause += ` AND m.id_ficha = $${pIdx++}`;
+      params.push(id_ficha);
+    }
+
+    // Obtener monitoreos agrupados por docente
+    const result = await db.query(`
+      SELECT 
+        d.id_docente,
+        d.nombres || ' ' || d.apellidos AS nombre_docente,
+        d.nivel AS nivel_educativo,
+        i.nombre AS institucion,
+        ROUND(AVG(m.puntaje_total)::numeric, 2) AS promedio,
+        json_agg(
+          json_build_object(
+            'id_monitoreo', m.id_monitoreo,
+            'numero', m.numero_visita,
+            'fecha', TO_CHAR(m.fecha, 'DD/MM/YYYY'),
+            'puntaje', ROUND(m.puntaje_total::numeric, 2),
+            'instrumento', f.nombre,
+            'nivel', COALESCE(
+              (SELECT nombre FROM niveles_desempeno
+               ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), 
+                             ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+               LIMIT 1),
+              'Sin nivel'
+            ),
+            'nivel_color', COALESCE(
+              (SELECT color FROM niveles_desempeno
+               ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), 
+                             ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+               LIMIT 1),
+              '#6366f1'
+            )
+          ) ORDER BY m.fecha ASC, m.numero_visita ASC
+        ) AS visitas,
+        COALESCE(
+          (SELECT nombre FROM niveles_desempeno
+           ORDER BY LEAST(ABS(FLOOR(AVG(m.puntaje_total)::numeric) - puntaje_minimo), 
+                         ABS(FLOOR(AVG(m.puntaje_total)::numeric) - puntaje_maximo))
+           LIMIT 1),
+          'Sin nivel'
+        ) AS nivel_final,
+        COALESCE(
+          (SELECT color FROM niveles_desempeno
+           ORDER BY LEAST(ABS(FLOOR(AVG(m.puntaje_total)::numeric) - puntaje_minimo), 
+                         ABS(FLOOR(AVG(m.puntaje_total)::numeric) - puntaje_maximo))
+           LIMIT 1),
+          '#6366f1'
+        ) AS nivel_color
+      FROM monitoreos m
+      JOIN docentes d ON m.id_docente = d.id_docente
+      JOIN instituciones i ON d.id_institucion = i.id_institucion
+      JOIN fichas f ON m.id_ficha = f.id_ficha
+      ${whereClause}
+      GROUP BY d.id_docente, d.nombres, d.apellidos, d.nivel, i.nombre
+      ORDER BY promedio DESC
+    `, params);
+
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const exportToExcel = async (req, res, next) => {
+  const { id_institucion, id_periodo, id_ficha, id_docente } = req.query;
+  const { role, id_institucion: userIdInstitucion } = req.user;
+
+  try {
+    let whereClause = 'WHERE m.estado = $1';
+    const params = ['completado'];
+    let pIdx = 2;
+
+    // Control de acceso por rol
+    if (role === 'director' || role === 'especialista') {
+      if (userIdInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userIdInstitucion);
+      }
+    } else if (id_institucion) {
+      whereClause += ` AND d.id_institucion = $${pIdx++}`;
+      params.push(id_institucion);
+    }
+
+    if (id_periodo) {
+      whereClause += ` AND m.id_periodo = $${pIdx++}`;
+      params.push(id_periodo);
+    }
+    if (id_ficha) {
+      whereClause += ` AND m.id_ficha = $${pIdx++}`;
+      params.push(id_ficha);
+    }
+    if (id_docente) {
+      whereClause += ` AND m.id_docente = $${pIdx++}`;
+      params.push(id_docente);
+    }
+
+    // Obtener datos agrupados por docente
+    const result = await db.query(`
+      SELECT 
+        d.id_docente,
+        d.nombres || ' ' || d.apellidos AS docente,
+        d.dni,
+        d.especialidad,
+        d.nivel AS nivel_educativo,
+        i.nombre AS institucion,
+        p.nombre AS periodo,
+        COUNT(m.id_monitoreo) AS total_monitoreos,
+        ROUND(AVG(m.puntaje_total)::numeric, 2) AS promedio_puntaje,
+        MAX(m.puntaje_total) AS puntaje_maximo,
+        MIN(m.puntaje_total) AS puntaje_minimo,
+        STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS instrumentos_usados,
+        MIN(m.fecha) AS primera_visita,
+        MAX(m.fecha) AS ultima_visita,
+        COALESCE(
+          (SELECT nombre FROM niveles_desempeno
+           ORDER BY LEAST(ABS(FLOOR(AVG(m.puntaje_total)::numeric) - puntaje_minimo), 
+                         ABS(FLOOR(AVG(m.puntaje_total)::numeric) - puntaje_maximo))
+           LIMIT 1),
+          'Sin nivel'
+        ) AS nivel_desempeno
+      FROM monitoreos m
+      JOIN docentes d ON m.id_docente = d.id_docente
+      JOIN instituciones i ON d.id_institucion = i.id_institucion
+      JOIN fichas f ON m.id_ficha = f.id_ficha
+      LEFT JOIN periodos p ON m.id_periodo = p.id_periodo
+      ${whereClause}
+      GROUP BY d.id_docente, d.nombres, d.apellidos, d.dni, d.especialidad, d.nivel, i.nombre, p.nombre
+      ORDER BY promedio_puntaje DESC
+    `, params);
+
+    // Obtener detalle de monitoreos por docente
+    const detalleResult = await db.query(`
+      SELECT 
+        m.id_monitoreo,
+        d.id_docente,
+        d.nombres || ' ' || d.apellidos AS docente,
+        m.fecha,
+        m.numero_visita,
+        f.nombre AS instrumento,
+        m.area,
+        m.sesion,
+        m.puntaje_total,
+        COALESCE(
+          (SELECT nombre FROM niveles_desempeno
+           ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), 
+                         ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+           LIMIT 1),
+          'Sin nivel'
+        ) AS nivel,
+        u.nombres || ' ' || u.apellidos AS evaluador,
+        m.compromiso_docente,
+        m.observaciones_generales,
+        m.recomendaciones
+      FROM monitoreos m
+      JOIN docentes d ON m.id_docente = d.id_docente
+      JOIN fichas f ON m.id_ficha = f.id_ficha
+      JOIN usuarios u ON m.id_evaluador = u.id_usuario
+      ${whereClause}
+      ORDER BY d.id_docente, m.fecha DESC, m.numero_visita DESC
+    `, params);
+
+    // Crear workbook
+    const wb = XLSX.utils.book_new();
+
+    // Hoja 1: Resumen por Docente
+    const resumenData = result.rows.map(row => ({
+      'DNI': row.dni || '',
+      'Docente': row.docente,
+      'Institución': row.institucion,
+      'Periodo': row.periodo || 'Varios',
+      'Nivel Educativo': row.nivel_educativo || '',
+      'Especialidad': row.especialidad || '',
+      'Total Monitoreos': row.total_monitoreos,
+      'Promedio': row.promedio_puntaje,
+      'Puntaje Máximo': row.puntaje_maximo,
+      'Puntaje Mínimo': row.puntaje_minimo,
+      'Nivel de Desempeño': row.nivel_desempeno,
+      'Instrumentos Usados': row.instrumentos_usados,
+      'Primera Visita': row.primera_visita ? new Date(row.primera_visita).toLocaleDateString('es-PE') : '',
+      'Última Visita': row.ultima_visita ? new Date(row.ultima_visita).toLocaleDateString('es-PE') : ''
+    }));
+
+    const wsResumen = XLSX.utils.json_to_sheet(resumenData);
+    
+    // Ajustar anchos de columna
+    wsResumen['!cols'] = [
+      { wch: 12 }, { wch: 30 }, { wch: 35 }, { wch: 15 }, { wch: 15 },
+      { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+      { wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 12 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen por Docente');
+
+    // Hoja 2: Detalle de Monitoreos
+    const detalleData = detalleResult.rows.map(row => ({
+      'ID Monitoreo': row.id_monitoreo,
+      'Docente': row.docente,
+      'Fecha': row.fecha ? new Date(row.fecha).toLocaleDateString('es-PE') : '',
+      'Visita Nº': row.numero_visita,
+      'Instrumento': row.instrumento,
+      'Área': row.area || '',
+      'Sesión': row.sesion || '',
+      'Puntaje': row.puntaje_total,
+      'Nivel': row.nivel,
+      'Evaluador': row.evaluador,
+      'Compromiso': row.compromiso_docente || '',
+      'Observaciones': row.observaciones_generales || '',
+      'Recomendaciones': row.recomendaciones || ''
+    }));
+
+    const wsDetalle = XLSX.utils.json_to_sheet(detalleData);
+    
+    wsDetalle['!cols'] = [
+      { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 8 }, { wch: 25 },
+      { wch: 15 }, { wch: 20 }, { wch: 10 }, { wch: 18 }, { wch: 25 },
+      { wch: 30 }, { wch: 40 }, { wch: 40 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle de Monitoreos');
+
+    // Hoja 3: Evolución por Docente (si hay un docente específico)
+    if (id_docente) {
+      const evolucionResult = await db.query(`
+        SELECT 
+          m.fecha,
+          m.numero_visita,
+          m.puntaje_total,
+          f.nombre AS instrumento,
+          COALESCE(
+            (SELECT nombre FROM niveles_desempeno
+             ORDER BY LEAST(ABS(FLOOR(m.puntaje_total::numeric) - puntaje_minimo), 
+                           ABS(FLOOR(m.puntaje_total::numeric) - puntaje_maximo))
+             LIMIT 1),
+            'Sin nivel'
+          ) AS nivel
+        FROM monitoreos m
+        JOIN fichas f ON m.id_ficha = f.id_ficha
+        WHERE m.id_docente = $1 AND m.estado = 'completado'
+        ORDER BY m.fecha ASC, m.numero_visita ASC
+      `, [id_docente]);
+
+      const evolucionData = evolucionResult.rows.map((row, idx) => ({
+        'Orden': idx + 1,
+        'Fecha': row.fecha ? new Date(row.fecha).toLocaleDateString('es-PE') : '',
+        'Visita Nº': row.numero_visita,
+        'Instrumento': row.instrumento,
+        'Puntaje': row.puntaje_total,
+        'Nivel': row.nivel
+      }));
+
+      const wsEvolucion = XLSX.utils.json_to_sheet(evolucionData);
+      wsEvolucion['!cols'] = [{ wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 25 }, { wch: 10 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, wsEvolucion, 'Evolución Docente');
+    }
+
+    // Generar buffer
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // Establecer headers de respuesta
+    const filename = `Reporte_Monitoreos_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createMonitoreo,
   getMonitoreosByEvaluador,
@@ -621,6 +918,8 @@ module.exports = {
   getStats,
   getEvaluadosByPeriodo,
   getMonitoreoDetalle,
-  deleteMonitoreo
+  deleteMonitoreo,
+  getSeguimiento,
+  exportToExcel
 };
 
