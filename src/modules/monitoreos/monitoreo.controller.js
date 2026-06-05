@@ -742,7 +742,7 @@ const exportToExcel = async (req, res, next) => {
         d.id_docente,
         d.nombres || ' ' || d.apellidos AS docente,
         d.dni,
-        d.especialidad,
+        d.area,
         d.nivel AS nivel_educativo,
         i.nombre AS institucion,
         p.nombre AS periodo,
@@ -766,7 +766,7 @@ const exportToExcel = async (req, res, next) => {
       JOIN fichas f ON m.id_ficha = f.id_ficha
       LEFT JOIN periodos p ON m.id_periodo = p.id_periodo
       ${whereClause}
-      GROUP BY d.id_docente, d.nombres, d.apellidos, d.dni, d.especialidad, d.nivel, i.nombre, p.nombre
+      GROUP BY d.id_docente, d.nombres, d.apellidos, d.dni, d.area, d.nivel, i.nombre, p.nombre
       ORDER BY promedio_puntaje DESC
     `, params);
 
@@ -811,7 +811,7 @@ const exportToExcel = async (req, res, next) => {
       'Institución': row.institucion,
       'Periodo': row.periodo || 'Varios',
       'Nivel Educativo': row.nivel_educativo || '',
-      'Especialidad': row.especialidad || '',
+      'Área': row.area || '',
       'Total Monitoreos': row.total_monitoreos,
       'Promedio': row.promedio_puntaje,
       'Puntaje Máximo': row.puntaje_maximo,
