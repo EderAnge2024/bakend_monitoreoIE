@@ -117,7 +117,7 @@ const saveAnswers = async (req, res, next) => {
 };
 
 const getStats = async (req, res, next) => {
-  const { id_institucion, id_periodo, id_ficha, id_docente } = req.query;
+  const { id_institucion, id_periodo, id_ficha, id_docente, nivel_desempeno } = req.query;
   
   try {
     let whereClause = 'WHERE 1=1';
@@ -287,10 +287,17 @@ const getStats = async (req, res, next) => {
       LIMIT 10
     `, params);
     // Resolver color en JS (independiente de si columna color existe en BD)
-    stats.rankingDocentes = rankingRes.rows.map(row => ({
+    let rankingDocentes = rankingRes.rows.map(row => ({
       ...row,
       nivel_color: nivelColor(row.nivel_final)
     }));
+
+    // Aplicar filtro de nivel de desempeño si se especifica
+    if (nivel_desempeno) {
+      rankingDocentes = rankingDocentes.filter(row => row.nivel_final === nivel_desempeno);
+    }
+    
+    stats.rankingDocentes = rankingDocentes;
 
     // Helper reutilizable para rankings por nivel educativo y tipo de ficha
     const buildRankingByNivel = async (nivelEducativo, esTutoria) => {
@@ -329,7 +336,14 @@ const getStats = async (req, res, next) => {
         ORDER BY ad.promedio DESC
         LIMIT 10
       `, params);
-      return res.rows.map(row => ({ ...row, nivel_color: nivelColor(row.nivel_final) }));
+      let results = res.rows.map(row => ({ ...row, nivel_color: nivelColor(row.nivel_final) }));
+      
+      // Aplicar filtro de nivel de desempeño si se especifica
+      if (nivel_desempeno) {
+        results = results.filter(row => row.nivel_final === nivel_desempeno);
+      }
+      
+      return results;
     };
 
     // 3.2 Ranking de Tutores general + separados por nivel educativo
@@ -361,10 +375,17 @@ const getStats = async (req, res, next) => {
       LIMIT 10
     `, params);
 
-    stats.rankingTutores = rankingTutoresRes.rows.map(row => ({
+    let rankingTutores = rankingTutoresRes.rows.map(row => ({
       ...row,
       nivel_color: nivelColor(row.nivel_final)
     }));
+
+    // Aplicar filtro de nivel de desempeño si se especifica
+    if (nivel_desempeno) {
+      rankingTutores = rankingTutores.filter(row => row.nivel_final === nivel_desempeno);
+    }
+    
+    stats.rankingTutores = rankingTutores;
 
     // Rankings separados por nivel educativo (primaria / secundaria)
     const [rdPrimaria, rdSecundaria, rtPrimaria, rtSecundaria] = await Promise.all([
