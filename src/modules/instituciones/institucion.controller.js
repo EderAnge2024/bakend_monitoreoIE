@@ -3,6 +3,13 @@ const crud = require('../../utils/crud');
 
 const getAll = async (req, res, next) => {
   try {
+    const { role, id_institucion } = req.user || {};
+    
+    if ((role === 'director' || role === 'docente') && id_institucion) {
+      const result = await db.query('SELECT * FROM instituciones WHERE id_institucion = $1 ORDER BY id_institucion DESC', [id_institucion]);
+      return res.json(result.rows);
+    }
+    
     const result = await db.query('SELECT * FROM instituciones ORDER BY id_institucion DESC');
     res.json(result.rows);
   } catch (error) {
