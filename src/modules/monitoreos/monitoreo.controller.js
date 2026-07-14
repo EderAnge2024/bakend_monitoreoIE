@@ -649,7 +649,14 @@ const getSeguimiento = async (req, res, next) => {
     let pIdx = 2;
 
     // Control de acceso por rol
-    if (role === 'director') {
+    if (role === 'docente') {
+      const docenteRes = await db.query(
+        'SELECT id_docente FROM docentes WHERE id_usuario = $1 LIMIT 1', [req.user.id]
+      );
+      if (docenteRes.rows.length === 0) return res.json([]);
+      whereClause += ` AND d.id_docente = $${pIdx++}`;
+      params.push(docenteRes.rows[0].id_docente);
+    } else if (role === 'director') {
       if (userIdInstitucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
         params.push(userIdInstitucion);
@@ -746,7 +753,14 @@ const exportToExcel = async (req, res, next) => {
     let pIdx = 2;
 
     // Control de acceso por rol
-    if (role === 'director') {
+    if (role === 'docente') {
+      const docenteRes = await db.query(
+        'SELECT id_docente FROM docentes WHERE id_usuario = $1 LIMIT 1', [req.user.id]
+      );
+      if (docenteRes.rows.length === 0) return res.json([]);
+      whereClause += ` AND d.id_docente = $${pIdx++}`;
+      params.push(docenteRes.rows[0].id_docente);
+    } else if (role === 'director') {
       // Director: limit to their own institution
       if (userIdInstitucion) {
         whereClause += ` AND d.id_institucion = $${pIdx++}`;
@@ -1093,7 +1107,14 @@ const getSeguimientoAnalisis = async (req, res, next) => {
     let pIdx = 2;
 
     // Control de acceso por rol
-    if (role === 'director' && userIdInstitucion) {
+    if (role === 'docente') {
+      const docenteRes = await db.query(
+        'SELECT id_docente FROM docentes WHERE id_usuario = $1 LIMIT 1', [req.user.id]
+      );
+      if (docenteRes.rows.length === 0) return res.json({ tipo: 'general', datos: [] });
+      whereClause += ` AND d.id_docente = $${pIdx++}`;
+      params.push(docenteRes.rows[0].id_docente);
+    } else if (role === 'director' && userIdInstitucion) {
       whereClause += ` AND d.id_institucion = $${pIdx++}`;
       params.push(userIdInstitucion);
     } else if (role === 'especialista') {
@@ -1139,6 +1160,7 @@ const getSeguimientoAnalisis = async (req, res, next) => {
     } else {
       const result = await db.query(`
         SELECT 
+          m.numero_visita,
           c.nombre AS categoria,
           p.id_pregunta,
           p.pregunta,
@@ -1149,8 +1171,8 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         ${whereClause}
-        GROUP BY c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
-        ORDER BY c.orden, p.orden
+        GROUP BY m.numero_visita, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden, m.numero_visita
       `, params);
       
       return res.json({ tipo: 'general', datos: result.rows });
