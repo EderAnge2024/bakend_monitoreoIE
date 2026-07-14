@@ -457,7 +457,7 @@ const getEvaluadosByPeriodo = async (req, res, next) => {
   const { id_periodo } = req.params;
   const { id_ficha } = req.query;
   try {
-    let query = "SELECT DISTINCT id_docente FROM monitoreos WHERE id_periodo = $1 AND estado = 'completado'";
+    let query = "SELECT id_docente, COUNT(*) as conteo FROM monitoreos WHERE id_periodo = $1 AND estado = 'completado'";
     const params = [id_periodo];
     
     if (id_ficha) {
@@ -465,8 +465,10 @@ const getEvaluadosByPeriodo = async (req, res, next) => {
       params.push(id_ficha);
     }
 
+    query += " GROUP BY id_docente";
+
     const result = await db.query(query, params);
-    res.json(result.rows.map(r => r.id_docente));
+    res.json(result.rows);
   } catch (error) {
     next(error);
   }
@@ -1077,6 +1079,87 @@ const exportToExcel = async (req, res, next) => {
   }
 };
 
+const getSeguimientoAnalisis = async (req, res, next) => {
+  const { id_institucion, id_periodo, id_ficha, id_docente } = req.query;
+  const { role, id_institucion: userIdInstitucion } = req.user;
+
+  if (!id_ficha) {
+    return res.status(400).json({ message: 'Se requiere id_ficha para el análisis por criterios' });
+  }
+
+  try {
+    let whereClause = "WHERE m.estado = 'completado' AND m.id_ficha = $1";
+    const params = [id_ficha];
+    let pIdx = 2;
+
+    // Control de acceso por rol
+    if (role === 'director' && userIdInstitucion) {
+      whereClause += ` AND d.id_institucion = $${pIdx++}`;
+      params.push(userIdInstitucion);
+    } else if (role === 'especialista') {
+      if (id_institucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(id_institucion);
+      } else if (userIdInstitucion) {
+        whereClause += ` AND d.id_institucion = $${pIdx++}`;
+        params.push(userIdInstitucion);
+      }
+    } else if (id_institucion) {
+      whereClause += ` AND d.id_institucion = $${pIdx++}`;
+      params.push(id_institucion);
+    }
+
+    if (id_periodo) {
+      whereClause += ` AND m.id_periodo = $${pIdx++}`;
+      params.push(id_periodo);
+    }
+
+    if (id_docente) {
+      whereClause += ` AND m.id_docente = $${pIdx++}`;
+      params.push(id_docente);
+      
+      const result = await db.query(`
+        SELECT 
+          m.numero_visita,
+          c.nombre AS categoria,
+          p.id_pregunta,
+          p.pregunta,
+          ROUND(AVG(r.puntaje)::numeric, 2) AS promedio_puntaje
+        FROM respuestas r
+        JOIN preguntas p ON r.id_pregunta = p.id_pregunta
+        JOIN categorias c ON p.id_categoria = c.id_categoria
+        JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
+        JOIN docentes d ON m.id_docente = d.id_docente
+        ${whereClause}
+        GROUP BY m.numero_visita, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden, m.numero_visita
+      `, params);
+      
+      return res.json({ tipo: 'individual', datos: result.rows });
+    } else {
+      const result = await db.query(`
+        SELECT 
+          c.nombre AS categoria,
+          p.id_pregunta,
+          p.pregunta,
+          ROUND(AVG(r.puntaje)::numeric, 2) AS promedio_puntaje
+        FROM respuestas r
+        JOIN preguntas p ON r.id_pregunta = p.id_pregunta
+        JOIN categorias c ON p.id_categoria = c.id_categoria
+        JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
+        JOIN docentes d ON m.id_docente = d.id_docente
+        ${whereClause}
+        GROUP BY c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden
+      `, params);
+      
+      return res.json({ tipo: 'general', datos: result.rows });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createMonitoreo,
   getMonitoreosByEvaluador,
@@ -1088,6 +1171,6 @@ module.exports = {
   getMonitoreoDetalle,
   deleteMonitoreo,
   getSeguimiento,
-  exportToExcel
+  exportToExcel,
+  getSeguimientoAnalisis
 };
-
