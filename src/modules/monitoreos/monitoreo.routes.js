@@ -9,9 +9,9 @@ router.post('/respuestas', authenticateJWT, authorizeRoles('administrador', 'dir
 
 // GET routes - IMPORTANT: Specific routes must come BEFORE parameterized routes
 router.get('/stats', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista'), monitoreoController.getStats);
-router.get('/seguimiento/analisis', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista'), monitoreoController.getSeguimientoAnalisis);
-router.get('/seguimiento', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista'), monitoreoController.getSeguimiento);
-router.get('/export/excel', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista'), monitoreoController.exportToExcel);
+router.get('/seguimiento/analisis', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista', 'docente'), monitoreoController.getSeguimientoAnalisis);
+router.get('/seguimiento', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista', 'docente'), monitoreoController.getSeguimiento);
+router.get('/export/excel', authenticateJWT, authorizeRoles('administrador', 'director', 'especialista', 'docente'), monitoreoController.exportToExcel);
 router.get('/historial', authenticateJWT, monitoreoController.getAllMonitoreos);
 router.get('/mis-evaluaciones', authenticateJWT, monitoreoController.getMonitoreosByEvaluador);
 router.get('/evaluados/:id_periodo', authenticateJWT, monitoreoController.getEvaluadosByPeriodo);
