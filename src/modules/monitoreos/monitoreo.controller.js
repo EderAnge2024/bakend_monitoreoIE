@@ -1111,7 +1111,7 @@ const getSeguimientoAnalisis = async (req, res, next) => {
       const docenteRes = await db.query(
         'SELECT id_docente FROM docentes WHERE id_usuario = $1 LIMIT 1', [req.user.id]
       );
-      if (docenteRes.rows.length === 0) return res.json({ tipo: 'general', datos: [] });
+      if (docenteRes.rows.length === 0) return res.json({ tipo: 'general', datos: [], preguntasSiNo: [] });
       whereClause += ` AND d.id_docente = $${pIdx++}`;
       params.push(docenteRes.rows[0].id_docente);
     } else if (role === 'director' && userIdInstitucion) {
@@ -1139,6 +1139,7 @@ const getSeguimientoAnalisis = async (req, res, next) => {
       whereClause += ` AND m.id_docente = $${pIdx++}`;
       params.push(id_docente);
       
+      // Consulta para preguntas con puntaje (excluye Sí/No)
       const result = await db.query(`
         SELECT 
           m.numero_visita,
@@ -1154,13 +1155,41 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
-        ${whereClause}
+        ${whereClause} AND p.tipo_respuesta != 'si_no' AND p.puntaje_maximo > 0
+        GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
+      `, params);
+
+      // Consulta para preguntas Sí/No
+      const preguntasSiNo = await db.query(`
+        SELECT 
+          m.numero_visita,
+          m.fecha,
+          COALESCE(per.nombre, 'Sin período') AS periodo_nombre,
+          c.nombre AS categoria,
+          p.id_pregunta,
+          p.pregunta,
+          COUNT(CASE WHEN r.respuesta_texto = 'Sí' OR r.respuesta_texto = 'Si' OR r.valor_respuesta = 1 THEN 1 END) AS total_si,
+          COUNT(CASE WHEN r.respuesta_texto = 'No' OR r.valor_respuesta = 0 THEN 1 END) AS total_no,
+          COUNT(*) AS total_respuestas
+        FROM respuestas r
+        JOIN preguntas p ON r.id_pregunta = p.id_pregunta
+        JOIN categorias c ON p.id_categoria = c.id_categoria
+        JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
+        JOIN docentes d ON m.id_docente = d.id_docente
+        LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
+        ${whereClause} AND (p.tipo_respuesta = 'si_no' OR p.puntaje_maximo = 0)
         GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
         ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
       
-      return res.json({ tipo: 'individual', datos: result.rows });
+      return res.json({ 
+        tipo: 'individual', 
+        datos: result.rows,
+        preguntasSiNo: preguntasSiNo.rows 
+      });
     } else {
+      // Consulta para preguntas con puntaje (excluye Sí/No)
       const result = await db.query(`
         SELECT 
           m.numero_visita,
@@ -1176,12 +1205,39 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
-        ${whereClause}
+        ${whereClause} AND p.tipo_respuesta != 'si_no' AND p.puntaje_maximo > 0
+        GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
+      `, params);
+
+      // Consulta para preguntas Sí/No 
+      const preguntasSiNo = await db.query(`
+        SELECT 
+          m.numero_visita,
+          m.fecha,
+          COALESCE(per.nombre, 'Sin período') AS periodo_nombre,
+          c.nombre AS categoria,
+          p.id_pregunta,
+          p.pregunta,
+          COUNT(CASE WHEN r.respuesta_texto = 'Sí' OR r.respuesta_texto = 'Si' OR r.valor_respuesta = 1 THEN 1 END) AS total_si,
+          COUNT(CASE WHEN r.respuesta_texto = 'No' OR r.valor_respuesta = 0 THEN 1 END) AS total_no,
+          COUNT(*) AS total_respuestas
+        FROM respuestas r
+        JOIN preguntas p ON r.id_pregunta = p.id_pregunta
+        JOIN categorias c ON p.id_categoria = c.id_categoria
+        JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
+        JOIN docentes d ON m.id_docente = d.id_docente
+        LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
+        ${whereClause} AND (p.tipo_respuesta = 'si_no' OR p.puntaje_maximo = 0)
         GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
         ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
       
-      return res.json({ tipo: 'general', datos: result.rows });
+      return res.json({ 
+        tipo: 'general', 
+        datos: result.rows,
+        preguntasSiNo: preguntasSiNo.rows 
+      });
     }
   } catch (error) {
     next(error);
