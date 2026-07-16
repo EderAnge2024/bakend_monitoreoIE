@@ -1155,12 +1155,20 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
-        ${whereClause} AND p.tipo_respuesta != 'si_no' AND p.puntaje_maximo > 0
+        ${whereClause} 
+        AND p.id_pregunta NOT IN (
+          SELECT DISTINCT p2.id_pregunta 
+          FROM preguntas p2 
+          JOIN opciones_respuesta o1 ON p2.id_pregunta = o1.id_pregunta 
+          JOIN opciones_respuesta o2 ON p2.id_pregunta = o2.id_pregunta 
+          WHERE UPPER(TRIM(o1.nombre_opcion)) IN ('SI', 'SÍ') 
+          AND UPPER(TRIM(o2.nombre_opcion)) = 'NO'
+        )
         GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
         ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
 
-      // Consulta para preguntas Sí/No
+      // Consulta para preguntas Sí/No (basada en opciones de respuesta)
       const preguntasSiNo = await db.query(`
         SELECT 
           m.numero_visita,
@@ -1169,8 +1177,8 @@ const getSeguimientoAnalisis = async (req, res, next) => {
           c.nombre AS categoria,
           p.id_pregunta,
           p.pregunta,
-          COUNT(CASE WHEN r.respuesta_texto = 'Sí' OR r.respuesta_texto = 'Si' OR r.valor_respuesta = 1 THEN 1 END) AS total_si,
-          COUNT(CASE WHEN r.respuesta_texto = 'No' OR r.valor_respuesta = 0 THEN 1 END) AS total_no,
+          COUNT(CASE WHEN UPPER(TRIM(o.nombre_opcion)) IN ('SI', 'SÍ') AND r.id_opcion = o.id_opcion THEN 1 END) AS total_si,
+          COUNT(CASE WHEN UPPER(TRIM(o.nombre_opcion)) = 'NO' AND r.id_opcion = o.id_opcion THEN 1 END) AS total_no,
           COUNT(*) AS total_respuestas
         FROM respuestas r
         JOIN preguntas p ON r.id_pregunta = p.id_pregunta
@@ -1178,7 +1186,16 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
-        ${whereClause} AND (p.tipo_respuesta = 'si_no' OR p.puntaje_maximo = 0)
+        LEFT JOIN opciones_respuesta o ON r.id_opcion = o.id_opcion
+        ${whereClause} 
+        AND p.id_pregunta IN (
+          SELECT DISTINCT p2.id_pregunta 
+          FROM preguntas p2 
+          JOIN opciones_respuesta o1 ON p2.id_pregunta = o1.id_pregunta 
+          JOIN opciones_respuesta o2 ON p2.id_pregunta = o2.id_pregunta 
+          WHERE UPPER(TRIM(o1.nombre_opcion)) IN ('SI', 'SÍ') 
+          AND UPPER(TRIM(o2.nombre_opcion)) = 'NO'
+        )
         GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
         ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
@@ -1205,12 +1222,20 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
-        ${whereClause} AND p.tipo_respuesta != 'si_no' AND p.puntaje_maximo > 0
+        ${whereClause} 
+        AND p.id_pregunta NOT IN (
+          SELECT DISTINCT p2.id_pregunta 
+          FROM preguntas p2 
+          JOIN opciones_respuesta o1 ON p2.id_pregunta = o1.id_pregunta 
+          JOIN opciones_respuesta o2 ON p2.id_pregunta = o2.id_pregunta 
+          WHERE UPPER(TRIM(o1.nombre_opcion)) IN ('SI', 'SÍ') 
+          AND UPPER(TRIM(o2.nombre_opcion)) = 'NO'
+        )
         GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
         ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
 
-      // Consulta para preguntas Sí/No 
+      // Consulta para preguntas Sí/No (basada en opciones de respuesta)
       const preguntasSiNo = await db.query(`
         SELECT 
           m.numero_visita,
@@ -1219,8 +1244,8 @@ const getSeguimientoAnalisis = async (req, res, next) => {
           c.nombre AS categoria,
           p.id_pregunta,
           p.pregunta,
-          COUNT(CASE WHEN r.respuesta_texto = 'Sí' OR r.respuesta_texto = 'Si' OR r.valor_respuesta = 1 THEN 1 END) AS total_si,
-          COUNT(CASE WHEN r.respuesta_texto = 'No' OR r.valor_respuesta = 0 THEN 1 END) AS total_no,
+          COUNT(CASE WHEN UPPER(TRIM(o.nombre_opcion)) IN ('SI', 'SÍ') AND r.id_opcion = o.id_opcion THEN 1 END) AS total_si,
+          COUNT(CASE WHEN UPPER(TRIM(o.nombre_opcion)) = 'NO' AND r.id_opcion = o.id_opcion THEN 1 END) AS total_no,
           COUNT(*) AS total_respuestas
         FROM respuestas r
         JOIN preguntas p ON r.id_pregunta = p.id_pregunta
@@ -1228,7 +1253,16 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
         LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
-        ${whereClause} AND (p.tipo_respuesta = 'si_no' OR p.puntaje_maximo = 0)
+        LEFT JOIN opciones_respuesta o ON r.id_opcion = o.id_opcion
+        ${whereClause} 
+        AND p.id_pregunta IN (
+          SELECT DISTINCT p2.id_pregunta 
+          FROM preguntas p2 
+          JOIN opciones_respuesta o1 ON p2.id_pregunta = o1.id_pregunta 
+          JOIN opciones_respuesta o2 ON p2.id_pregunta = o2.id_pregunta 
+          WHERE UPPER(TRIM(o1.nombre_opcion)) IN ('SI', 'SÍ') 
+          AND UPPER(TRIM(o2.nombre_opcion)) = 'NO'
+        )
         GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
         ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
