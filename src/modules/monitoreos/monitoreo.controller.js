@@ -1142,6 +1142,8 @@ const getSeguimientoAnalisis = async (req, res, next) => {
       const result = await db.query(`
         SELECT 
           m.numero_visita,
+          m.fecha,
+          COALESCE(per.nombre, 'Sin período') AS periodo_nombre,
           c.nombre AS categoria,
           p.id_pregunta,
           p.pregunta,
@@ -1151,9 +1153,10 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN categorias c ON p.id_categoria = c.id_categoria
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
+        LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
         ${whereClause}
-        GROUP BY m.numero_visita, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
-        ORDER BY c.orden, p.orden, m.numero_visita
+        GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
       
       return res.json({ tipo: 'individual', datos: result.rows });
@@ -1161,6 +1164,8 @@ const getSeguimientoAnalisis = async (req, res, next) => {
       const result = await db.query(`
         SELECT 
           m.numero_visita,
+          m.fecha,
+          COALESCE(per.nombre, 'Sin período') AS periodo_nombre,
           c.nombre AS categoria,
           p.id_pregunta,
           p.pregunta,
@@ -1170,9 +1175,10 @@ const getSeguimientoAnalisis = async (req, res, next) => {
         JOIN categorias c ON p.id_categoria = c.id_categoria
         JOIN monitoreos m ON r.id_monitoreo = m.id_monitoreo
         JOIN docentes d ON m.id_docente = d.id_docente
+        LEFT JOIN periodos per ON m.id_periodo = per.id_periodo
         ${whereClause}
-        GROUP BY m.numero_visita, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
-        ORDER BY c.orden, p.orden, m.numero_visita
+        GROUP BY m.numero_visita, m.fecha, per.nombre, c.nombre, p.id_pregunta, p.pregunta, c.orden, p.orden
+        ORDER BY c.orden, p.orden, m.fecha ASC, m.numero_visita
       `, params);
       
       return res.json({ tipo: 'general', datos: result.rows });
