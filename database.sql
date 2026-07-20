@@ -162,3 +162,85 @@ CREATE TABLE evidencias (
     tipo_archivo VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ======================================================================
+-- NUEVO MÓDULO: REGISTRAR ASISTENCIA DOCENTE
+-- ======================================================================
+
+-- Table: configuracion_asistencia
+CREATE TABLE configuracion_asistencia (
+    id_config SERIAL PRIMARY KEY,
+    id_institucion INTEGER REFERENCES instituciones(id) ON DELETE CASCADE,
+    latitud_ie DECIMAL(10,8) NOT NULL,
+    longitud_ie DECIMAL(10,8) NOT NULL,
+    radio_permitido_metros INTEGER DEFAULT 100,
+    wifi_nombre VARCHAR(255),
+    wifi_bssid VARCHAR(17), -- MAC address format
+    validar_gps BOOLEAN DEFAULT TRUE,
+    validar_wifi BOOLEAN DEFAULT FALSE,
+    hora_ingreso TIME DEFAULT '08:00:00',
+    hora_salida TIME DEFAULT '13:00:00',
+    tolerancia_minutos INTEGER DEFAULT 15,
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: asistencias_docentes
+CREATE TABLE asistencias_docentes (
+    id_asistencia SERIAL PRIMARY KEY,
+    id_docente INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
+    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+    hora_ingreso TIME,
+    hora_salida TIME,
+    latitud_ingreso DECIMAL(10,8),
+    longitud_ingreso DECIMAL(10,8),
+    latitud_salida DECIMAL(10,8),
+    longitud_salida DECIMAL(10,8),
+    distancia_ingreso_metros INTEGER,
+    distancia_salida_metros INTEGER,
+    wifi_ingreso VARCHAR(255),
+    wifi_ingreso_bssid VARCHAR(17),
+    wifi_salida VARCHAR(255),
+    wifi_salida_bssid VARCHAR(17),
+    estado_ingreso VARCHAR(20) DEFAULT 'PUNTUAL', -- PUNTUAL, TARDANZA
+    estado_salida VARCHAR(20), -- NORMAL, TEMPRANO
+    nivel_seguridad VARCHAR(20) DEFAULT 'MEDIA', -- ALTA, MEDIA, BAJA
+    observaciones TEXT,
+    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(id_docente, fecha) -- Un registro por docente por día
+);
+
+-- ======================================================================
+-- NUEVO MÓDULO: EVENTOS INSTITUCIONALES
+-- ======================================================================
+
+-- Table: eventos
+CREATE TABLE eventos (
+    id_evento SERIAL PRIMARY KEY,
+    id_institucion INTEGER NOT NULL REFERENCES instituciones(id) ON DELETE CASCADE,
+    nombre_evento VARCHAR(200) NOT NULL,
+    fecha DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME,
+    estado VARCHAR(20) DEFAULT 'PENDIENTE', -- PENDIENTE, EN_REGISTRO, CERRADO, ANULADO
+    descripcion TEXT,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table: asistencia_eventos
+CREATE TABLE asistencia_eventos (
+    id_asistencia_evento BIGSERIAL PRIMARY KEY,
+    id_evento INTEGER NOT NULL REFERENCES eventos(id_evento) ON DELETE CASCADE,
+    id_docente INTEGER NOT NULL REFERENCES docentes(id) ON DELETE CASCADE,
+    hora_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    latitud DECIMAL(10,8),
+    longitud DECIMAL(11,8),
+    distancia_metros DECIMAL(8,2),
+    wifi_detectado VARCHAR(100),
+    wifi_bssid VARCHAR(100),
+    nivel_seguridad VARCHAR(20), -- ALTA, MEDIA, BAJA
+    estado VARCHAR(20) DEFAULT 'PRESENTE',
+    observaciones TEXT,
+    UNIQUE(id_evento, id_docente) -- Un docente solo puede registrarse una vez por evento
+);

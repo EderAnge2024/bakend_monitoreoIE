@@ -22,6 +22,8 @@ const rolesRoutes = require('./modules/roles/roles.routes');
 const notificationRoutes = require('./modules/notifications/notification.routes');
 const documentoRoutes = require('./modules/documentos/documento.routes');
 const reporteRoutes   = require('./modules/reportes/reporte.routes');
+const asistenciaRoutes = require('./modules/asistencias/asistencia.routes');
+const eventoRoutes = require('./modules/eventos/evento.routes');
 
 
 const app = express();
@@ -110,6 +112,8 @@ app.use('/api/roles', rolesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/documentos', documentoRoutes);
 app.use('/api/reportes', reporteRoutes);
+app.use('/api/asistencias', asistenciaRoutes);
+app.use('/api/eventos', eventoRoutes);
 
 
 app.get('/', (req, res) => {
