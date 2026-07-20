@@ -12,11 +12,19 @@ const calcularDistancia = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c); // Distancia en metros
 };
 
-// Función para determinar el nivel de seguridad
+// Función para determinar el nivel de seguridad (GPS como principal)
 const determinarNivelSeguridad = (validacionGPS, validacionWiFi, distancia, radioPermitido) => {
-  if (validacionGPS && validacionWiFi && distancia <= radioPermitido/2) return 'ALTA';
-  if (validacionGPS && distancia <= radioPermitido) return 'MEDIA';
-  return 'BAJA';
+  // GPS es la validación principal
+  if (!validacionGPS) return 'BAJA';
+  
+  // Nivel basado principalmente en precisión GPS
+  if (distancia <= radioPermitido/3) {
+    return validacionWiFi ? 'ALTA' : 'MEDIA'; // WiFi solo mejora la seguridad
+  } else if (distancia <= radioPermitido) {
+    return 'MEDIA';
+  } else {
+    return 'BAJA';
+  }
 };
 
 // Obtener configuración de asistencia de la institución
@@ -146,15 +154,18 @@ const registrarIngreso = async (req, res, next) => {
       });
     }
 
-    // Validar WiFi si está configurado
+    // Validar WiFi si está configurado (OPCIONAL - no bloquea el registro)
     let validacionWiFi = true;
+    let advertenciaWiFi = null;
+    
     if (config.validar_wifi && config.wifi_nombre) {
       validacionWiFi = (wifi_ssid === config.wifi_nombre) || 
                        (wifi_bssid === config.wifi_bssid);
       
       if (!validacionWiFi) {
-        // Registrar incidencia pero permitir el registro con nivel de seguridad bajo
-        console.log(`Advertencia WiFi: Esperado ${config.wifi_nombre}, Recibido: ${wifi_ssid}`);
+        advertenciaWiFi = `WiFi esperado: ${config.wifi_nombre}, detectado: ${wifi_ssid || 'No detectado'}`;
+        console.log(`Advertencia WiFi: ${advertenciaWiFi}`);
+        // NOTA: No bloquea el registro, solo registra la advertencia
       }
     }
 
@@ -169,7 +180,7 @@ const registrarIngreso = async (req, res, next) => {
 
     const estadoIngreso = horaActual <= horaLimite ? 'PUNTUAL' : 'TARDANZA';
 
-    // Determinar nivel de seguridad
+    // Determinar nivel de seguridad (basado principalmente en GPS)
     const nivelSeguridad = determinarNivelSeguridad(
       config.validar_gps, 
       validacionWiFi, 
@@ -196,7 +207,7 @@ const registrarIngreso = async (req, res, next) => {
         wifi_bssid || null,
         estadoIngreso,
         nivelSeguridad,
-        validacionWiFi ? null : 'WiFi institucional no detectado'
+        advertenciaWiFi
       ]
     );
 
