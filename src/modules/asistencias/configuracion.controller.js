@@ -236,9 +236,40 @@ const getReporteAsistencias = async (req, res, next) => {
   }
 };
 
+// Eliminar registro de asistencia
+const deleteAsistencia = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { id_institucion } = req.user;
+
+    // Verificar que la asistencia pertenece a la institución (por medio del docente)
+    const asistenciaExiste = await db.query(
+      `SELECT a.id_asistencia 
+       FROM asistencias_docentes a
+       JOIN docentes d ON a.id_docente = d.id_docente
+       WHERE a.id_asistencia = $1 AND d.id_institucion = $2`,
+      [id, id_institucion]
+    );
+
+    if (asistenciaExiste.rows.length === 0) {
+      return res.status(404).json({ message: 'Registro de asistencia no encontrado o no autorizado' });
+    }
+
+    await db.query('DELETE FROM asistencias_docentes WHERE id_asistencia = $1', [id]);
+
+    res.json({
+      success: true,
+      message: 'Registro de asistencia eliminado exitosamente'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getConfiguracion,
   saveConfiguracion,
   getEstadisticasAsistencia,
-  getReporteAsistencias
+  getReporteAsistencias,
+  deleteAsistencia
 };

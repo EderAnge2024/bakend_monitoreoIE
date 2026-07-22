@@ -202,6 +202,35 @@ const getAsistentesEvento = async (req, res, next) => {
   }
 };
 
+// Eliminar evento físicamente
+const deleteEvento = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { id_institucion } = req.user;
+
+    // Verificar que el evento pertenece a la institución
+    const eventoExiste = await db.query(
+      'SELECT id_evento FROM eventos WHERE id_evento = $1 AND id_institucion = $2',
+      [id, id_institucion]
+    );
+
+    if (eventoExiste.rows.length === 0) {
+      return res.status(404).json({ message: 'Evento no encontrado' });
+    }
+
+    // Se asume CASCADE en la base de datos o se borran las asistencias primero
+    await db.query('DELETE FROM asistencia_eventos WHERE id_evento = $1', [id]);
+    await db.query('DELETE FROM eventos WHERE id_evento = $1', [id]);
+
+    res.json({
+      success: true,
+      message: 'Evento eliminado exitosamente'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ============================================================================
 // FUNCIONES PARA DOCENTES (Registro de Asistencia a Eventos)
 // ============================================================================
@@ -389,6 +418,7 @@ module.exports = {
   updateEvento,
   cambiarEstadoEvento,
   getAsistentesEvento,
+  deleteEvento,
   
   // Funciones para docentes
   getEventosDisponibles,

@@ -15,5 +15,6 @@ router.get('/admin/configuracion', authenticateJWT, authorizeRoles('administrado
 router.post('/admin/configuracion', authenticateJWT, authorizeRoles('administrador', 'director'), configuracionController.saveConfiguracion);
 router.get('/admin/estadisticas', authenticateJWT, authorizeRoles('administrador', 'director'), configuracionController.getEstadisticasAsistencia);
 router.get('/admin/reporte', authenticateJWT, authorizeRoles('administrador', 'director'), configuracionController.getReporteAsistencias);
+router.delete('/:id', authenticateJWT, authorizeRoles('director'), configuracionController.deleteAsistencia);
 
 module.exports = router;

@@ -14,6 +14,7 @@ router.get('/:id', authenticateJWT, authorizeRoles('administrador', 'director'),
 router.put('/:id', authenticateJWT, authorizeRoles('administrador', 'director'), eventoController.updateEvento);
 router.patch('/:id/estado', authenticateJWT, authorizeRoles('administrador', 'director'), eventoController.cambiarEstadoEvento);
 router.get('/:id/asistentes', authenticateJWT, authorizeRoles('administrador', 'director'), eventoController.getAsistentesEvento);
+router.delete('/:id', authenticateJWT, authorizeRoles('director'), eventoController.deleteEvento);
 
 // ============================================================================
 // RUTAS PARA DOCENTES (Registro de Asistencia a Eventos)
